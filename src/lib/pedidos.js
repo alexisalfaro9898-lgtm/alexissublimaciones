@@ -303,6 +303,7 @@ export async function crearPedido({ cliente, items, tipo }) {
           cantidad,
           precio_unitario: precio,
           subtotal: precio * cantidad,
+          costo_unitario: item.producto.precio_costo ?? null,
           detalle: detalleTexto
         })
         .select()

@@ -22,10 +22,22 @@ import {
   Type,
   Upload,
   RefreshCw,
-  LogOut
+  LogOut,
+  Pencil,
+  Check,
+  X,
+  ListChecks,
+  LayoutGrid,
+  List,
+  BarChart3
 } from 'lucide-react'
 
 import { supabase } from './lib/supabase'
+import DashboardAdmin from './components/DashboardAdmin'
+import {
+  proponerNormalizaciones,
+  decodificarNombre
+} from './lib/nombres'
 import {
   RECARGO_NOMBRE_TEXTO,
   RECARGO_BOLSITA,
@@ -167,6 +179,62 @@ async function cargarCategorias() {
     setPagina('ProductoDetalle')
   }
 
+  function actualizarProducto(productoActualizado) {
+
+    setProductos((actuales) =>
+      actuales.map((producto) =>
+        producto.id === productoActualizado.id
+          ? {
+              ...producto,
+              ...productoActualizado,
+              categorias:
+                categorias.find(
+                  (categoria) =>
+                    categoria.id ===
+                    productoActualizado.categoria_id
+                ) || producto.categorias
+            }
+          : producto
+      )
+    )
+  }
+
+  function actualizarProductos(lista) {
+
+    if (!lista || lista.length === 0) return
+
+    const porId = new Map(
+      lista.map((producto) => [producto.id, producto])
+    )
+
+    setProductos((actuales) =>
+      actuales.map((producto) => {
+        const actualizado = porId.get(producto.id)
+
+        if (!actualizado) return producto
+
+        return {
+          ...producto,
+          ...actualizado,
+          categorias:
+            categorias.find(
+              (categoria) =>
+                categoria.id === actualizado.categoria_id
+            ) || producto.categorias
+        }
+      })
+    )
+  }
+
+  function eliminarProductos(ids) {
+
+    const conjunto = new Set(ids)
+
+    setProductos((actuales) =>
+      actuales.filter((producto) => !conjunto.has(producto.id))
+    )
+  }
+
 
   function volverAProductos() {
 
@@ -193,6 +261,15 @@ async function cargarCategorias() {
 
 
   const menu = [
+
+    ...(usuario?.rol_id === 1
+      ? [
+          {
+            nombre: 'Dashboard',
+            icono: BarChart3
+          }
+        ]
+      : []),
 
     {
       nombre: 'Inicio',
@@ -409,6 +486,12 @@ async function cargarCategorias() {
         )}
 
 
+        {pagina === 'Dashboard' &&
+          usuario?.rol_id === 1 && (
+          <DashboardAdmin />
+        )}
+
+
         {pagina === 'Pedidos' && (
 
           <Pedidos
@@ -467,6 +550,9 @@ async function cargarCategorias() {
             cargando={cargandoProductos}
             onAbrirProducto={abrirProducto}
             onProductoCreado={cargarProductos}
+            onActualizarProducto={actualizarProducto}
+            onActualizarProductos={actualizarProductos}
+            onEliminarProductos={eliminarProductos}
           />
 
         )}
@@ -483,7 +569,8 @@ async function cargarCategorias() {
           )}
 
 
-        {pagina !== 'Inicio' &&
+        {pagina !== 'Dashboard' &&
+          pagina !== 'Inicio' &&
           pagina !== 'Pedidos' &&
           pagina !== 'NuevoPedido' &&
           pagina !== 'PedidoDetalle' &&
@@ -3036,7 +3123,10 @@ function Productos({
   setOrden,
   cargando,
   onAbrirProducto,
-  onProductoCreado
+  onProductoCreado,
+  onActualizarProducto,
+  onActualizarProductos,
+  onEliminarProductos
 }) {
 
   const [
@@ -3044,48 +3134,217 @@ function Productos({
     setMostrarFormulario
   ] = useState(false)
 
+  const [
+    modoEdicion,
+    setModoEdicion
+  ] = useState(false)
 
   const [
-    nombre,
-    setNombre
-  ] = useState('')
-
-
-  const [
-    categoriaId,
-    setCategoriaId
-  ] = useState('')
-
+    seleccion,
+    setSeleccion
+  ] = useState(() => new Set())
 
   const [
-    descripcion,
-    setDescripcion
+    filtroCategoria,
+    setFiltroCategoria
   ] = useState('')
-
 
   const [
-    precio,
-    setPrecio
-  ] = useState('')
-
-
-  const [
-    codigo,
-    setCodigo
-  ] = useState('')
-
+    filtroEstado,
+    setFiltroEstado
+  ] = useState('todos')
 
   const [
-    costo,
-    setCosto
-  ] = useState('')
+    modal,
+    setModal
+  ] = useState(null)
 
+  const [
+    guardandoCampo,
+    setGuardandoCampo
+  ] = useState({})
+
+  const [
+    preview,
+    setPreview
+  ] = useState(null)
+
+  const [
+    vista,
+    setVista
+  ] = useState('lista')
+
+  const [
+    mensaje,
+    setMensaje
+  ] = useState('')
 
   const [
     guardando,
     setGuardando
   ] = useState(false)
 
+  const [costo, setCosto] = useState('')
+
+  function avisar(texto) {
+    setMensaje(texto)
+
+    setTimeout(() => {
+      setMensaje('')
+    }, 2800)
+  }
+
+  const visibles = productos.filter((producto) => {
+    const coincideCategoria =
+      !filtroCategoria ||
+      producto.categoria_id === Number(filtroCategoria)
+
+    const coincideEstado =
+      filtroEstado === 'todos' ||
+      (filtroEstado === 'activos'
+        ? producto.activo
+        : !producto.activo)
+
+    return coincideCategoria && coincideEstado
+  })
+
+  const idsVisibles = visibles.map((producto) => producto.id)
+
+  const todosVisiblesSeleccionados =
+    idsVisibles.length > 0 &&
+    idsVisibles.every((id) => seleccion.has(id))
+
+  const seleccionados = productos.filter((producto) =>
+    seleccion.has(producto.id)
+  )
+
+  function alternarSeleccion(id) {
+    setSeleccion((actual) => {
+      const nuevo = new Set(actual)
+
+      if (nuevo.has(id)) {
+        nuevo.delete(id)
+      } else {
+        nuevo.add(id)
+      }
+
+      return nuevo
+    })
+  }
+
+  function alternarTodosVisibles() {
+    setSeleccion((actual) => {
+      const nuevo = new Set(actual)
+
+      if (todosVisiblesSeleccionados) {
+        idsVisibles.forEach((id) => nuevo.delete(id))
+      } else {
+        idsVisibles.forEach((id) => nuevo.add(id))
+      }
+
+      return nuevo
+    })
+  }
+
+  function limpiarSeleccion() {
+    setSeleccion(new Set())
+  }
+
+  async function guardarCampo(producto, cambios, campo) {
+    setGuardandoCampo((actual) => ({
+      ...actual,
+      [producto.id]: campo
+    }))
+
+    const { data, error } = await supabase
+      .from('productos')
+      .update({
+        ...cambios,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', producto.id)
+      .select()
+      .single()
+
+    setGuardandoCampo((actual) => {
+      const nuevo = { ...actual }
+      delete nuevo[producto.id]
+      return nuevo
+    })
+
+    if (error) {
+      console.error(error)
+      alert('No se pudo guardar:\n\n' + error.message)
+      return
+    }
+
+    onActualizarProducto(data)
+    avisar('Guardado correctamente.')
+  }
+
+  function productoGuardado(productoActualizado) {
+    onActualizarProducto(productoActualizado)
+    setModal(null)
+    avisar('Producto actualizado.')
+  }
+
+  function productosActualizados(lista, detalle) {
+    onActualizarProductos(lista)
+
+    if (detalle) {
+      avisar(detalle)
+    }
+  }
+
+  function productosEliminados(ids) {
+    onEliminarProductos(ids)
+
+    setSeleccion((actual) => {
+      const nuevo = new Set(actual)
+      ids.forEach((id) => nuevo.delete(id))
+      return nuevo
+    })
+
+    avisar(
+      ids.length === 1
+        ? 'Producto eliminado.'
+        : `${ids.length} productos eliminados.`
+    )
+  }
+
+  function productosDesactivados(ids) {
+    const lista = seleccionados
+      .filter((producto) => ids.includes(producto.id))
+      .map((producto) => ({ ...producto, activo: false }))
+
+    onActualizarProductos(lista)
+    avisar(`${ids.length} producto(s) desactivado(s).`)
+  }
+
+  const [
+    nombre,
+    setNombre
+  ] = useState('')
+
+  const [
+    categoriaId,
+    setCategoriaId
+  ] = useState('')
+
+  const [
+    descripcion,
+    setDescripcion
+  ] = useState('')
+
+  const [
+    precio,
+    setPrecio
+  ] = useState('')
+
+  const [
+    codigo,
+    setCodigo
+  ] = useState('')
 
   async function guardarProducto(e) {
 
@@ -3539,6 +3798,114 @@ function Productos({
 
           </div>
 
+
+          <label className="editar-toggle">
+
+            <input
+              type="checkbox"
+              checked={modoEdicion}
+              onChange={(e) => {
+                setModoEdicion(e.target.checked)
+
+                if (!e.target.checked) {
+                  limpiarSeleccion()
+                }
+              }}
+            />
+
+            <span>
+              Editar
+            </span>
+
+          </label>
+
+
+          <div
+            className="vista-toggle"
+            role="group"
+            aria-label="Cambiar vista de productos"
+          >
+
+            <button
+              type="button"
+              className={
+                'vista-boton' +
+                (vista === 'lista'
+                  ? ' activa'
+                  : '')
+              }
+              title="Ver como lista"
+              onClick={() => setVista('lista')}
+            >
+              <List size={16} />
+            </button>
+
+            <button
+              type="button"
+              className={
+                'vista-boton' +
+                (vista === 'cuadricula'
+                  ? ' activa'
+                  : '')
+              }
+              title="Ver como cuadrícula"
+              onClick={() => setVista('cuadricula')}
+            >
+              <LayoutGrid size={16} />
+            </button>
+
+          </div>
+
+
+          <select
+            className="filtro-productos"
+            value={filtroCategoria}
+            onChange={(e) =>
+              setFiltroCategoria(e.target.value)
+            }
+            aria-label="Filtrar por categoría"
+          >
+
+            <option value="">
+              Categoría: todas
+            </option>
+
+            {categorias.map((categoria) => (
+              <option
+                key={categoria.id}
+                value={categoria.id}
+              >
+                {categoria.nombre}
+              </option>
+            ))}
+
+          </select>
+
+
+          <select
+            className="filtro-productos"
+            value={filtroEstado}
+            onChange={(e) =>
+              setFiltroEstado(e.target.value)
+            }
+            aria-label="Filtrar por estado"
+          >
+
+            <option value="todos">
+              Estado: todos
+            </option>
+
+            <option value="activos">
+              Activos
+            </option>
+
+            <option value="inactivos">
+              Inactivos
+            </option>
+
+          </select>
+
+
           <div className="catalogo-orden-caja">
 
             <span>Ordenar:</span>
@@ -3573,7 +3940,7 @@ function Productos({
 
           <span className="cantidad-productos">
 
-            {productos.length}
+            {visibles.length}
             {' '}
             productos
 
@@ -3584,247 +3951,2676 @@ function Productos({
       )}
 
 
-      {!mostrarFormulario && (
+{!mostrarFormulario && (
 
-        <div className="productos-grid">
-
+        <div className="productos-tabla-contenedor">
 
           {cargando && (
-
             <div className="cargando">
               Cargando productos...
             </div>
-
           )}
 
-
           {!cargando &&
-            productos.map(
-              (
-                producto
-              ) => (
+            visibles.length > 0 &&
+            vista === 'lista' && (
+            <div className="productos-tabla">
 
-                <div
-                  className="producto-card"
-                  key={
-                    producto.id
-                  }
-                  onClick={() =>
-                    onAbrirProducto(
-                      producto
-                    )
-                  }
-                  style={{
-                    cursor:
-                      'pointer'
-                  }}
-                >
+              <div className="productos-tabla-cabecera">
 
-                  <div className="producto-imagen">
-
-                    {producto.imagen_principal ? (
-
-                      <img
-                        src={
-                          producto.imagen_principal
-                        }
-                        alt={
-                          nombreProducto(producto)
-                        }
-                      />
-
-                    ) : (
-
-                      <Package
-                        size={42}
-                      />
-
-                    )}
-
+                {modoEdicion && (
+                  <div className="celda-check">
+                    <input
+                      type="checkbox"
+                      checked={todosVisiblesSeleccionados}
+                      onChange={alternarTodosVisibles}
+                      aria-label="Seleccionar todos los productos visibles"
+                      title="Seleccionar todos los visibles"
+                    />
                   </div>
+                )}
 
-
-                  <div className="producto-info">
-
-                    <span className="producto-categoria">
-
-                      {producto.categorias
-                        ?.nombre ||
-                        'Sin categoría'}
-
-                    </span>
-
-
-                    <h3>
-                      {nombreProducto(producto)}
-                    </h3>
-
-
-                    <p>
-                      {producto.descripcion ||
-                        'Sin descripción'}
-                    </p>
-
-
-                    <div className="producto-precios">
-
-                      <div>
-
-                        <span>
-                          Proveedor
-                        </span>
-
-                        <strong className={
-                          producto.precio_costo
-                            ? undefined
-                            : 'sin-precio'
-                        }>
-
-                          {producto.precio_costo ? (
-                            '$' +
-                            Number(
-                              producto.precio_costo
-                            ).toLocaleString(
-                              'es-UY'
-                            )
-                          ) : (
-                            '—'
-                          )}
-
-                        </strong>
-
-                      </div>
-
-
-                      <div>
-
-                        <span>
-                          Mayorista
-                        </span>
-
-                        <strong className={
-                          producto.precio_mayorista
-                            ? undefined
-                            : 'sin-precio'
-                        }>
-
-                          {producto.precio_mayorista ? (
-                            '$' +
-                            Number(
-                              producto.precio_mayorista
-                            ).toLocaleString(
-                              'es-UY'
-                            )
-                          ) : (
-                            '—'
-                          )}
-
-                        </strong>
-
-                      </div>
-
-
-                      <div>
-
-                        <span>
-                          Minorista
-                        </span>
-
-                        <strong className={
-                          producto.precio_publico
-                            ? undefined
-                            : 'sin-precio'
-                        }>
-
-                          {producto.precio_publico ? (
-                            '$' +
-                            Number(
-                              producto.precio_publico
-                            ).toLocaleString(
-                              'es-UY'
-                            )
-                          ) : (
-                            '—'
-                          )}
-
-                        </strong>
-
-                      </div>
-
-                    </div>
-
-
-                    <div className="producto-footer">
-
-                      <span className="producto-codigo">
-
-                        {producto.codigo_interno ||
-                          'Sin código'}
-
-                      </span>
-
-
-                      <span className={
-                        producto.stock
-                          ? 'producto-stock disponible'
-                          : producto.stock === 0
-                            ? 'producto-stock agotado'
-                            : 'producto-stock'
-                      }>
-
-                        {producto.stock
-                          ? 'Stock disponible'
-                          : producto.stock === 0
-                            ? 'Agotado'
-                            : 'Stock —'}
-
-                      </span>
-
-
-                      <ChevronRight
-                        size={18}
-                      />
-
-                    </div>
-
-                  </div>
-
+                <div className="celda-producto">
+                  Producto
                 </div>
 
-              )
-            )}
+                <div className="celda-categoria">
+                  Categoría
+                </div>
 
+                <div className="celda-precio">
+                  Precio
+                </div>
 
-          {!cargando &&
-            productos.length === 0 && (
+                <div className="celda-estado">
+                  Estado
+                </div>
 
-              <div className="sin-productos">
-
-                <Package size={42} />
-
-                <h3>
-                  No encontramos productos
-                </h3>
-
-                <p>
-                  Creá tu primer producto
-                  con "Nuevo producto".
-                </p>
+                <div className="celda-acciones">
+                  Acciones
+                </div>
 
               </div>
 
-            )}
+              {visibles.map((producto) => {
+
+                const categoria = categorias.find(
+                  (c) => c.id === producto.categoria_id
+                )
+
+                const precioVisible =
+                  producto.precio_publico ??
+                  producto.precio
+
+                const guardandoEste =
+                  guardandoCampo[producto.id]
+
+                return (
+                  <div
+                    className={
+                      'productos-fila' +
+                      (seleccion.has(producto.id)
+                        ? ' seleccionada'
+                        : '') +
+                      (producto.activo ? '' : ' inactiva')
+                    }
+                    key={producto.id}
+                    onMouseEnter={(e) => {
+                      const rect =
+                        e.currentTarget.getBoundingClientRect()
+                      setPreview({
+                        id: producto.id,
+                        left: Math.min(
+                          rect.right + 14,
+                          window.innerWidth - 190
+                        ),
+                        top: Math.max(
+                          Math.min(
+                            rect.top + rect.height / 2,
+                            window.innerHeight - 100
+                          ),
+                          90
+                        )
+                      })
+                    }}
+                    onMouseLeave={() => setPreview(null)}
+                  >
+
+                    {preview &&
+                      preview.id === producto.id && (
+                        <div
+                          className="producto-hover-imagen"
+                          style={{
+                            left: preview.left,
+                            top: preview.top
+                          }}
+                        >
+                          {producto.imagen_principal ? (
+                            <img
+                              src={producto.imagen_principal}
+                              alt={nombreProducto(producto)}
+                            />
+                          ) : (
+                            <div className="sin-imagen">
+                              <Package size={26} />
+                              Sin imagen
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    {modoEdicion && (
+                      <div className="celda-check">
+                        <input
+                          type="checkbox"
+                          checked={seleccion.has(producto.id)}
+                          onChange={() =>
+                            alternarSeleccion(producto.id)
+                          }
+                          aria-label={`Seleccionar ${nombreProducto(producto)}`}
+                        />
+                      </div>
+                    )}
+
+                    <div className="celda-producto">
+
+                      <div
+                        className="producto-nombre-comercial"
+                        onClick={() =>
+                          onAbrirProducto(producto)
+                        }
+                        title="Ver detalle completo"
+                      >
+                        {nombreProducto(producto)}
+                      </div>
+
+                      {producto.nombre &&
+                        producto.nombre !==
+                          (producto.nombre_comercial ||
+                            producto.nombre) && (
+                          <div className="producto-nombre-proveedor">
+                            {producto.nombre}
+                          </div>
+                        )}
+
+                      {producto.codigo_interno && (
+                        <div className="producto-codigo">
+                          {producto.codigo_interno}
+                        </div>
+                      )}
+
+                    </div>
+
+                    <div className="celda-categoria">
+
+                      {modoEdicion ? (
+
+                        <select
+                          className="edicion-inline"
+                          value={
+                            producto.categoria_id ?? ''
+                          }
+                          disabled={!!guardandoEste}
+                          onChange={(e) => {
+                            if (!e.target.value) return
+
+                            guardarCampo(
+                              producto,
+                              {
+                                categoria_id:
+                                  Number(e.target.value)
+                              },
+                              'categoria'
+                            )
+                          }}
+                        >
+                          <option value="">
+                            Sin categoría
+                          </option>
+
+                          {categorias.map((categoriaF) => (
+                            <option
+                              key={categoriaF.id}
+                              value={categoriaF.id}
+                            >
+                              {categoriaF.nombre}
+                            </option>
+                          ))}
+
+                        </select>
+
+                      ) : (
+
+                        <span>
+                          {categoria?.nombre ||
+                            'Sin categoría'}
+                        </span>
+
+                      )}
+
+                    </div>
+
+                    <div className="celda-precio">
+
+                      {modoEdicion ? (
+
+                        <input
+                          className="edicion-inline precio"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          defaultValue={
+                            producto.precio_publico ?? ''
+                          }
+                          disabled={!!guardandoEste}
+                          title="Precio público (minorista). Enter o salir del campo para guardar."
+                          onBlur={(e) => {
+                            const valor =
+                              e.target.value.trim()
+
+                            if (valor === '') return
+
+                            if (
+                              Number(valor) ===
+                              Number(
+                                producto.precio_publico
+                              )
+                            ) {
+                              return
+                            }
+
+                            guardarCampo(
+                              producto,
+                              {
+                                precio_publico:
+                                  Number(valor)
+                              },
+                              'precio'
+                            )
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.target.blur()
+                            }
+                          }}
+                        />
+
+                      ) : (
+
+                        <span>
+                          {precioVisible !== null &&
+                          precioVisible !== undefined
+                            ? '$' +
+                              Number(
+                                precioVisible
+                              ).toLocaleString(
+                                'es-UY'
+                              )
+                            : '—'}
+                        </span>
+
+                      )}
+
+                    </div>
+
+                    <div className="celda-estado">
+
+                      {modoEdicion ? (
+
+                        <button
+                          type="button"
+                          className={
+                            'estado-toggle' +
+                            (producto.activo
+                              ? ' activo'
+                              : ' inactivo')
+                          }
+                          disabled={!!guardandoEste}
+                          title="Clic para cambiar el estado"
+                          onClick={() =>
+                            guardarCampo(
+                              producto,
+                              {
+                                activo:
+                                  !producto.activo
+                              },
+                              'estado'
+                            )
+                          }
+                        >
+                          {producto.activo
+                            ? 'Activo'
+                            : 'Inactivo'}
+                        </button>
+
+                      ) : (
+
+                        <span
+                          className={
+                            'estado-badge-adm' +
+                            (producto.activo
+                              ? ' activo'
+                              : ' inactivo')
+                          }
+                        >
+                          {producto.activo
+                            ? 'Activo'
+                            : 'Inactivo'}
+                        </span>
+
+                      )}
+
+                    </div>
+
+                    <div className="celda-acciones">
+
+                      <button
+                        type="button"
+                        className="accion-icono"
+                        title="Editar producto"
+                        onClick={() =>
+                          setModal({
+                            tipo: 'editar',
+                            producto
+                          })
+                        }
+                      >
+                        <Pencil size={17} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className="accion-icono peligro"
+                        title="Eliminar producto"
+                        onClick={() =>
+                          setModal({
+                            tipo: 'eliminar',
+                            ids: [producto.id]
+                          })
+                        }
+                      >
+                        <Trash2 size={17} />
+                      </button>
+
+                    </div>
+
+                  </div>
+                )
+              })}
+
+            </div>
+          )}
+
+          {!cargando &&
+            visibles.length > 0 &&
+            vista === 'cuadricula' && (
+
+            <div className="productos-cuadricula">
+
+              {visibles.map((producto) => {
+
+                const categoria = categorias.find(
+                  (c) => c.id === producto.categoria_id
+                )
+
+                const precioVisible =
+                  producto.precio_publico ??
+                  producto.precio
+
+                const guardandoEste =
+                  guardandoCampo[producto.id]
+
+                return (
+                  <div
+                    className={
+                      'producto-tarjeta' +
+                      (seleccion.has(producto.id)
+                        ? ' seleccionada'
+                        : '') +
+                      (producto.activo ? '' : ' inactiva')
+                    }
+                    key={producto.id}
+                  >
+
+                    <div className="tarjeta-imagen">
+
+                      {producto.imagen_principal ? (
+                        <img
+                          src={producto.imagen_principal}
+                          alt={nombreProducto(producto)}
+                          loading="lazy"
+                          onClick={() =>
+                            onAbrirProducto(producto)
+                          }
+                        />
+                      ) : (
+                        <div
+                          className="tarjeta-sin-imagen"
+                          onClick={() =>
+                            onAbrirProducto(producto)
+                          }
+                        >
+                          <Package size={30} />
+                          <span>
+                            Sin imagen
+                          </span>
+                        </div>
+                      )}
+
+                      {modoEdicion && (
+                        <label
+                          className="tarjeta-check"
+                          onClick={(e) =>
+                            e.stopPropagation()
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={seleccion.has(
+                              producto.id
+                            )}
+                            onChange={() =>
+                              alternarSeleccion(
+                                producto.id
+                              )
+                            }
+                            aria-label={`Seleccionar ${nombreProducto(producto)}`}
+                          />
+                        </label>
+                      )}
+
+                      <div className="tarjeta-acciones">
+
+                        <button
+                          type="button"
+                          className="accion-icono"
+                          title="Editar producto"
+                          onClick={() =>
+                            setModal({
+                              tipo: 'editar',
+                              producto
+                            })
+                          }
+                        >
+                          <Pencil size={16} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="accion-icono peligro"
+                          title="Eliminar producto"
+                          onClick={() =>
+                            setModal({
+                              tipo: 'eliminar',
+                              ids: [producto.id]
+                            })
+                          }
+                        >
+                          <Trash2 size={16} />
+                        </button>
+
+                      </div>
+
+                    </div>
+
+                    <div className="tarjeta-cuerpo">
+
+                      <div
+                        className="producto-nombre-comercial"
+                        onClick={() =>
+                          onAbrirProducto(producto)
+                        }
+                        title="Ver detalle completo"
+                      >
+                        {nombreProducto(producto)}
+                      </div>
+
+                      {producto.nombre &&
+                        producto.nombre !==
+                          (producto.nombre_comercial ||
+                            producto.nombre) && (
+                          <div className="producto-nombre-proveedor">
+                            {producto.nombre}
+                          </div>
+                        )}
+
+                      {producto.codigo_interno && (
+                        <div className="producto-codigo">
+                          {producto.codigo_interno}
+                        </div>
+                      )}
+
+                      <div className="tarjeta-fila">
+
+                        {modoEdicion ? (
+
+                          <select
+                            className="edicion-inline"
+                            value={
+                              producto.categoria_id ?? ''
+                            }
+                            disabled={!!guardandoEste}
+                            onChange={(e) => {
+                              if (!e.target.value) return
+
+                              guardarCampo(
+                                producto,
+                                {
+                                  categoria_id:
+                                    Number(
+                                      e.target.value
+                                    )
+                                },
+                                'categoria'
+                              )
+                            }}
+                          >
+                            <option value="">
+                              Sin categoría
+                            </option>
+
+                            {categorias.map(
+                              (categoriaF) => (
+                                <option
+                                  key={categoriaF.id}
+                                  value={categoriaF.id}
+                                >
+                                  {categoriaF.nombre}
+                                </option>
+                              )
+                            )}
+
+                          </select>
+
+                        ) : (
+
+                          <span className="tarjeta-categoria">
+                            {categoria?.nombre ||
+                              'Sin categoría'}
+                          </span>
+
+                        )}
+
+                        <span className="tarjeta-precio">
+
+                          {precioVisible !== null &&
+                          precioVisible !== undefined
+                            ? '$' +
+                              Number(
+                                precioVisible
+                              ).toLocaleString(
+                                'es-UY'
+                              )
+                            : '—'}
+
+                        </span>
+
+                      </div>
+
+                      <div className="tarjeta-fila">
+
+                        {modoEdicion ? (
+
+                          <input
+                            className="edicion-inline precio"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            defaultValue={
+                              producto.precio_publico ?? ''
+                            }
+                            disabled={!!guardandoEste}
+                            title="Precio público (minorista). Enter o salir del campo para guardar."
+                            onBlur={(e) => {
+                              const valor =
+                                e.target.value.trim()
+
+                              if (valor === '') return
+
+                              if (
+                                Number(valor) ===
+                                Number(
+                                  producto.precio_publico
+                                )
+                              ) {
+                                return
+                              }
+
+                              guardarCampo(
+                                producto,
+                                {
+                                  precio_publico:
+                                    Number(valor)
+                                },
+                                'precio'
+                              )
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.target.blur()
+                              }
+                            }}
+                          />
+
+                        ) : (
+                          <span className="tarjeta-precio-editable">
+                            Precio editable
+                          </span>
+                        )}
+
+                        {modoEdicion ? (
+
+                          <button
+                            type="button"
+                            className={
+                              'estado-toggle' +
+                              (producto.activo
+                                ? ' activo'
+                                : ' inactivo')
+                            }
+                            disabled={!!guardandoEste}
+                            title="Clic para cambiar el estado"
+                            onClick={() =>
+                              guardarCampo(
+                                producto,
+                                {
+                                  activo:
+                                    !producto.activo
+                                },
+                                'estado'
+                              )
+                            }
+                          >
+                            {producto.activo
+                              ? 'Activo'
+                              : 'Inactivo'}
+                          </button>
+
+                        ) : (
+
+                          <span
+                            className={
+                              'estado-badge-adm' +
+                              (producto.activo
+                                ? ' activo'
+                                : ' inactivo')
+                            }
+                          >
+                            {producto.activo
+                              ? 'Activo'
+                              : 'Inactivo'}
+                          </span>
+
+                        )}
+
+                      </div>
+
+                    </div>
+
+                  </div>
+                )
+              })}
+
+            </div>
+          )}
+
+          {!cargando && visibles.length === 0 && (
+
+            <div className="sin-productos">
+
+              <Package size={42} />
+
+              <h3>
+                No encontramos productos
+              </h3>
+
+              <p>
+                {productos.length === 0
+                  ? 'Creá tu primer producto con "Nuevo producto".'
+                  : 'Probá con otra búsqueda o cambiá los filtros.'}
+              </p>
+
+            </div>
+
+          )}
 
         </div>
 
       )}
 
+      {modoEdicion && seleccion.size > 0 && (
+
+        <div className="seleccion-barra">
+
+          <span className="seleccion-conteo">
+
+            <ListChecks size={17} />
+
+            {seleccion.size}{' '}
+            {seleccion.size === 1
+              ? 'producto seleccionado'
+              : 'productos seleccionados'}
+
+          </span>
+
+          <div className="seleccion-acciones">
+
+            <button
+              type="button"
+              onClick={() =>
+                setModal({ tipo: 'masivo' })
+              }
+            >
+              Editar seleccionados
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setModal({
+                  tipo: 'accion',
+                  campo: 'categoria'
+                })
+              }
+            >
+              Cambiar categoría
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setModal({
+                  tipo: 'accion',
+                  campo: 'precio'
+                })
+              }
+            >
+              Cambiar precio
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setModal({
+                  tipo: 'accion',
+                  campo: 'nombre'
+                })
+              }
+            >
+              Cambiar nombre
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setModal({
+                  tipo: 'accion',
+                  campo: 'estado'
+                })
+              }
+            >
+              Activar / Desactivar
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setModal({ tipo: 'normalizar' })
+              }
+            >
+              Normalizar nombres
+            </button>
+
+            <button
+              type="button"
+              className="peligro"
+              onClick={() =>
+                setModal({
+                  tipo: 'eliminar',
+                  ids: [...seleccion]
+                })
+              }
+            >
+              Eliminar {seleccion.size}
+            </button>
+
+            <button
+              type="button"
+              className="sutil"
+              onClick={limpiarSeleccion}
+            >
+              Limpiar
+            </button>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {mensaje && (
+
+        <div className="toast-aviso">
+
+          <Check size={16} />
+
+          {mensaje}
+
+        </div>
+
+      )}
+
+      {modal?.tipo === 'editar' && (
+
+        <ModalEditarProducto
+          producto={modal.producto}
+          categorias={categorias}
+          onCerrar={() => setModal(null)}
+          onGuardado={productoGuardado}
+        />
+
+      )}
+
+      {modal?.tipo === 'masivo' && (
+
+        <ModalEdicionMasiva
+          ids={[...seleccion]}
+          productos={productos}
+          categorias={categorias}
+          onCerrar={() => setModal(null)}
+          onAplicado={(lista, detalle) => {
+            setModal(null)
+            productosActualizados(lista, detalle)
+          }}
+        />
+
+      )}
+
+      {modal?.tipo === 'accion' && (
+
+        <ModalAccionRapida
+          campo={modal.campo}
+          ids={[...seleccion]}
+          productos={productos}
+          categorias={categorias}
+          onCerrar={() => setModal(null)}
+          onAplicado={(lista, detalle) => {
+            setModal(null)
+            productosActualizados(lista, detalle)
+          }}
+        />
+
+      )}
+
+      {modal?.tipo === 'normalizar' && (
+
+        <ModalNormalizar
+          ids={[...seleccion]}
+          productos={productos}
+          onCerrar={() => setModal(null)}
+          onAplicado={(lista, detalle) => {
+            setModal(null)
+            productosActualizados(lista, detalle)
+          }}
+        />
+
+      )}
+
+      {modal?.tipo === 'eliminar' && (
+
+        <ModalEliminar
+          ids={modal.ids}
+          productos={productos}
+          onCerrar={() => setModal(null)}
+          onEliminados={(ids) => {
+            setModal(null)
+            productosEliminados(ids)
+          }}
+          onDesactivados={(ids) => {
+            setModal(null)
+            productosDesactivados(ids)
+          }}
+        />
+
+      )}
     </>
 
   )
 }
 
 
+
+const TABLAS_RELACIONADAS = [
+  { tabla: 'pedido_detalles', nombre: 'detalles de pedidos' },
+  { tabla: 'pedido_items', nombre: 'items de pedidos' },
+  { tabla: 'pedidos', nombre: 'pedidos' },
+  { tabla: 'producto_variantes', nombre: 'variantes' },
+  { tabla: 'producto_proveedores', nombre: 'relación con proveedores' },
+  { tabla: 'producto_personalizaciones', nombre: 'personalizaciones' },
+  { tabla: 'producto_preguntas', nombre: 'preguntas' },
+  { tabla: 'precios_productos', nombre: 'precios' }
+]
+
+async function verificarRelaciones(ids) {
+  const bloqueados = []
+
+  const porId = new Map(
+    ids.map((id) => [id, []])
+  )
+
+  for (const { tabla, nombre } of TABLAS_RELACIONADAS) {
+    const { data, error } = await supabase
+      .from(tabla)
+      .select('producto_id')
+      .in('producto_id', ids)
+
+    if (error) {
+      console.error('Error verificando ' + tabla + ':', error)
+      continue
+    }
+
+    for (const fila of data || []) {
+      if (porId.has(fila.producto_id)) {
+        porId.get(fila.producto_id).push(nombre)
+      }
+    }
+  }
+
+  for (const [id, tablas] of porId) {
+    if (tablas.length > 0) {
+      bloqueados.push({ id, tablas })
+    }
+  }
+
+  return bloqueados
+}
+
+/* ============================================================
+   MODAL: EDITAR PRODUCTO (INDIVIDUAL)
+   ============================================================ */
+
+function ModalEditarProducto({
+  producto,
+  categorias,
+  onCerrar,
+  onGuardado
+}) {
+
+  const [form, setForm] = useState({
+    nombre: producto.nombre || '',
+    nombre_comercial: producto.nombre_comercial || '',
+    categoria_id: producto.categoria_id || '',
+    descripcion: producto.descripcion || '',
+    codigo_interno: producto.codigo_interno || '',
+    precio_costo:
+      producto.precio_costo !== null &&
+      producto.precio_costo !== undefined
+        ? String(Number(producto.precio_costo))
+        : '',
+    precio_mayorista:
+      producto.precio_mayorista !== null &&
+      producto.precio_mayorista !== undefined
+        ? String(Number(producto.precio_mayorista))
+        : '',
+    precio_publico:
+      producto.precio_publico !== null &&
+      producto.precio_publico !== undefined
+        ? String(Number(producto.precio_publico))
+        : '',
+    activo: producto.activo !== false,
+    permite_personalizacion:
+      producto.permite_personalizacion !== false,
+    orden:
+      producto.orden !== null && producto.orden !== undefined
+        ? String(producto.orden)
+        : ''
+  })
+
+  const [variantes, setVariantes] = useState([])
+  const [personalizaciones, setPersonalizaciones] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    Promise.all([
+      supabase
+        .from('producto_variantes')
+        .select('*')
+        .eq('producto_id', producto.id)
+        .eq('activo', true)
+        .order('id'),
+
+      supabase
+        .from('producto_personalizaciones')
+        .select(`
+          *,
+          tipos_personalizacion (
+            nombre,
+            descripcion
+          )
+        `)
+        .eq('producto_id', producto.id)
+        .eq('activo', true)
+        .order('id')
+    ])
+      .then(([respuestaVariantes, respuestaPersonalizaciones]) => {
+        if (respuestaVariantes.error) {
+          console.error('Error cargando variantes:', respuestaVariantes.error)
+        }
+
+        if (respuestaPersonalizaciones.error) {
+          console.error(
+            'Error cargando personalizaciones:',
+            respuestaPersonalizaciones.error
+          )
+        }
+
+        setVariantes(
+          (respuestaVariantes.data || []).map((variante) => ({
+            ...variante,
+            _nuevo: false
+          }))
+        )
+
+        setPersonalizaciones(
+          respuestaPersonalizaciones.data || []
+        )
+
+        setCargando(false)
+      })
+  }, [producto.id])
+
+  function setCampo(campo, valor) {
+    setForm((actual) => ({ ...actual, [campo]: valor }))
+  }
+
+  function cambiarVariante(clave, campo, valor) {
+    setVariantes((actuales) =>
+      actuales.map((variante) => {
+        const esLaVariante = variante.id
+          ? variante.id === clave
+          : variante._tmp === clave
+
+        return esLaVariante
+          ? { ...variante, [campo]: valor }
+          : variante
+      })
+    )
+  }
+
+  function agregarVariante() {
+    setVariantes((actuales) => [
+      ...actuales,
+      {
+        id: null,
+        _nuevo: true,
+        _tmp:
+          typeof crypto !== 'undefined' &&
+          typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : 'nueva-' + Date.now() + '-' + Math.random(),
+        nombre: '',
+        precio: ''
+      }
+    ])
+  }
+
+  function quitarVariante(clave) {
+    setVariantes((actuales) =>
+      actuales.filter((variante) =>
+        variante.id
+          ? variante.id !== clave
+          : variante._tmp !== clave
+      )
+    )
+  }
+
+  async function guardar(e) {
+    e.preventDefault()
+
+    if (!form.nombre.trim()) {
+      alert('El nombre es obligatorio.')
+      return
+    }
+
+    if (!form.categoria_id) {
+      alert('Seleccioná una categoría.')
+      return
+    }
+
+    setGuardando(true)
+
+    const actualizacion = {
+      nombre: form.nombre.trim(),
+      nombre_comercial: form.nombre_comercial.trim() || null,
+      categoria_id: Number(form.categoria_id),
+      descripcion: form.descripcion.trim() || null,
+      codigo_interno: form.codigo_interno.trim() || null,
+      precio_costo:
+        form.precio_costo === '' ? null : Number(form.precio_costo),
+      precio_mayorista:
+        form.precio_mayorista === '' ? null : Number(form.precio_mayorista),
+      precio_publico:
+        form.precio_publico === '' ? null : Number(form.precio_publico),
+      activo: form.activo,
+      permite_personalizacion: form.permite_personalizacion,
+      orden: form.orden === '' ? 0 : Number(form.orden),
+      updated_at: new Date().toISOString()
+    }
+
+    const { data, error } = await supabase
+      .from('productos')
+      .update(actualizacion)
+      .eq('id', producto.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error(error)
+      alert('No se pudo guardar el producto:\n\n' + error.message)
+      setGuardando(false)
+      return
+    }
+
+    const originales = new Map(
+      variantes
+        .filter((variante) => variante.id)
+        .map((variante) => [variante.id, variante])
+    )
+
+    const idsActuales = [...originales.keys()]
+
+    const operaciones = []
+
+    for (const variante of variantes) {
+      const nombreVariante = (variante.nombre || '').trim()
+
+      if (!nombreVariante) continue
+
+      const precioVariante =
+        variante.precio === '' || variante.precio === null
+          ? null
+          : Number(variante.precio)
+
+      if (variante._nuevo) {
+        operaciones.push(
+          supabase
+            .from('producto_variantes')
+            .insert({
+              producto_id: producto.id,
+              nombre: nombreVariante,
+              precio: precioVariante,
+              activo: true
+            })
+        )
+      } else {
+        const original = originales.get(variante.id)
+
+        if (
+          original &&
+          (original.nombre !== nombreVariante ||
+            Number(original.precio) !== Number(precioVariante))
+        ) {
+          operaciones.push(
+            supabase
+              .from('producto_variantes')
+              .update({
+                nombre: nombreVariante,
+                precio: precioVariante
+              })
+              .eq('id', variante.id)
+          )
+        }
+      }
+    }
+
+    for (const id of idsActuales) {
+      if (!variantes.some((variante) => variante.id === id)) {
+        operaciones.push(
+          supabase
+            .from('producto_variantes')
+            .delete()
+            .eq('id', id)
+        )
+      }
+    }
+
+    if (operaciones.length > 0) {
+      const resultados = await Promise.allSettled(operaciones)
+
+      const errores = resultados.filter(
+        (resultado) => resultado.status === 'rejected'
+      )
+
+      if (errores.length > 0) {
+        console.error('Errores en variantes:', errores)
+
+        if (variantes.some((variante) => !variante._nuevo)) {
+          alert(
+            'El producto se guardó, pero hubo errores guardando las variantes.'
+          )
+        }
+      }
+    }
+
+    setGuardando(false)
+    onGuardado(data)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={onCerrar}>
+
+      <div
+        className="modal"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+
+        <div className="modal-header">
+
+          <div>
+
+            <h2>
+              Editar producto
+            </h2>
+
+            <p>
+              {producto.codigo_interno || 'Sin código'}
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            className="accion-icono"
+            onClick={onCerrar}
+            title="Cerrar"
+          >
+            <X size={19} />
+          </button>
+
+        </div>
+
+        <form onSubmit={guardar}>
+
+          <div className="modal-cuerpo">
+
+            <div className="form-grid">
+
+              <label>
+
+                <strong>
+                  Nombre (proveedor) *
+                </strong>
+
+                <input
+                  type="text"
+                  value={form.nombre}
+                  onChange={(e) =>
+                    setCampo('nombre', e.target.value)
+                  }
+                  placeholder="Nombre que llega del proveedor"
+                />
+
+              </label>
+
+              <label>
+
+                <strong>
+                  Nombre comercial
+                </strong>
+
+                <input
+                  type="text"
+                  value={form.nombre_comercial}
+                  onChange={(e) =>
+                    setCampo('nombre_comercial', e.target.value)
+                  }
+                  placeholder="Nombre que ve el cliente"
+                />
+
+                <small>
+                  Si está vacío, el cliente ve el nombre del proveedor.
+                </small>
+
+              </label>
+
+              <label>
+
+                <strong>
+                  Categoría *
+                </strong>
+
+                <select
+                  value={form.categoria_id}
+                  onChange={(e) =>
+                    setCampo('categoria_id', e.target.value)
+                  }
+                >
+                  <option value="">
+                    Seleccionar categoría...
+                  </option>
+
+                  {categorias.map((categoria) => (
+                    <option
+                      key={categoria.id}
+                      value={categoria.id}
+                    >
+                      {categoria.nombre}
+                    </option>
+                  ))}
+
+                </select>
+
+              </label>
+
+              <label>
+
+                <strong>
+                  Código interno
+                </strong>
+
+                <input
+                  type="text"
+                  value={form.codigo_interno}
+                  onChange={(e) =>
+                    setCampo('codigo_interno', e.target.value)
+                  }
+                  placeholder="Ej: TAZA-001"
+                />
+
+              </label>
+
+              <label>
+
+                <strong>
+                  Precio proveedor
+                </strong>
+
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.precio_costo}
+                  onChange={(e) =>
+                    setCampo('precio_costo', e.target.value)
+                  }
+                  placeholder="100"
+                />
+
+              </label>
+
+              <label>
+
+                <strong>
+                  Precio mayorista
+                </strong>
+
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.precio_mayorista}
+                  onChange={(e) =>
+                    setCampo('precio_mayorista', e.target.value)
+                  }
+                  placeholder="300"
+                />
+
+              </label>
+
+              <label>
+
+                <strong>
+                  Precio minorista / público
+                </strong>
+
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.precio_publico}
+                  onChange={(e) =>
+                    setCampo('precio_publico', e.target.value)
+                  }
+                  placeholder="400"
+                />
+
+              </label>
+
+              <label>
+
+                <strong>
+                  Orden (destacados)
+                </strong>
+
+                <input
+                  type="number"
+                  value={form.orden}
+                  onChange={(e) =>
+                    setCampo('orden', e.target.value)
+                  }
+                  placeholder="0"
+                />
+
+              </label>
+
+            </div>
+
+            <label className="campo-completo">
+
+              <strong>
+                Descripción
+              </strong>
+
+              <textarea
+                rows="3"
+                value={form.descripcion}
+                onChange={(e) =>
+                  setCampo('descripcion', e.target.value)
+                }
+                placeholder="Descripción del producto"
+              />
+
+            </label>
+
+            <div className="modal-checks">
+
+              <label className="check">
+
+                <input
+                  type="checkbox"
+                  checked={form.activo}
+                  onChange={(e) =>
+                    setCampo('activo', e.target.checked)
+                  }
+                />
+
+                <strong>
+                  Producto activo (visible en el catálogo)
+                </strong>
+
+              </label>
+
+              <label className="check">
+
+                <input
+                  type="checkbox"
+                  checked={form.permite_personalizacion}
+                  onChange={(e) =>
+                    setCampo(
+                      'permite_personalizacion',
+                      e.target.checked
+                    )
+                  }
+                />
+
+                <strong>
+                  Permite personalización
+                </strong>
+
+              </label>
+
+            </div>
+
+            <div className="modal-seccion">
+
+              <div className="modal-seccion-titulo">
+
+                <strong>
+                  Variantes
+                </strong>
+
+                <button
+                  type="button"
+                  className="agregar-chico"
+                  onClick={agregarVariante}
+                >
+                  + Agregar variante
+                </button>
+
+              </div>
+
+              {cargando ? (
+                <p className="modal-ayuda">
+                  Cargando variantes...
+                </p>
+              ) : variantes.length === 0 ? (
+                <p className="modal-ayuda">
+                  Este producto no tiene variantes.
+                  Podés agregarlas si hace falta
+                  (ej: talles, colores).
+                </p>
+              ) : (
+                <div className="variantes-lista">
+
+                  {variantes.map((variante) => (
+                    <div
+                      className="variante-fila"
+                      key={
+                        variante.id ?? variante._tmp
+                      }
+                    >
+
+                      <input
+                        type="text"
+                        placeholder="Nombre de la variante"
+                        value={variante.nombre}
+                        onChange={(e) =>
+                          cambiarVariante(
+                            variante.id ?? variante._tmp,
+                            'nombre',
+                            e.target.value
+                          )
+                        }
+                      />
+
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Precio"
+                        value={variante.precio ?? ''}
+                        onChange={(e) =>
+                          cambiarVariante(
+                            variante.id ?? variante._tmp,
+                            'precio',
+                            e.target.value
+                          )
+                        }
+                      />
+
+                      <button
+                        type="button"
+                        className="accion-icono peligro"
+                        title="Quitar variante"
+                        onClick={() =>
+                          quitarVariante(
+                            variante.id ?? variante._tmp
+                          )
+                        }
+                      >
+                        <Trash2 size={16} />
+                      </button>
+
+                    </div>
+                  ))}
+
+                </div>
+              )}
+
+            </div>
+
+            {personalizaciones.length > 0 && (
+
+              <div className="modal-seccion">
+
+                <div className="modal-seccion-titulo">
+
+                  <strong>
+                    Personalización existente
+                  </strong>
+
+                </div>
+
+                <div className="pers-existente">
+
+                  {personalizaciones.map((item) => (
+                    <span key={item.id}>
+                      {item.tipos_personalizacion?.nombre ||
+                        item.nombre}
+                    </span>
+                  ))}
+
+                </div>
+
+                <p className="modal-ayuda">
+                  Estas opciones de personalización
+                  se conservan intactas.
+                </p>
+
+              </div>
+
+            )}
+
+          </div>
+
+          <div className="modal-pie">
+
+            <button
+              type="button"
+              className="sutil"
+              onClick={onCerrar}
+            >
+              Cancelar
+            </button>
+
+            <button
+              type="submit"
+              className="guardar"
+              disabled={guardando}
+            >
+              <Save size={17} />
+
+              {guardando
+                ? 'Guardando...'
+                : 'Guardar cambios'}
+            </button>
+
+          </div>
+
+        </form>
+
+      </div>
+
+    </div>
+  )
+}
+
+/* ============================================================
+   MODAL: EDICIÓN MASIVA
+   ============================================================ */
+
+function ModalEdicionMasiva({
+  ids,
+  productos,
+  categorias,
+  onCerrar,
+  onAplicado
+}) {
+
+  const [campos, setCampos] = useState({
+    nombre: false,
+    nombre_comercial: false,
+    categoria_id: false,
+    precio_costo: false,
+    precio_mayorista: false,
+    precio_publico: false
+  })
+
+  const [valores, setValores] = useState({
+    nombre: '',
+    nombre_comercial: '',
+    categoria_id: '',
+    precio_costo: '',
+    precio_mayorista: '',
+    precio_publico: ''
+  })
+
+  const [estado, setEstado] = useState('')
+
+  const [guardando, setGuardando] = useState(false)
+
+  const porId = new Map(
+    productos.map((producto) => [producto.id, producto])
+  )
+
+  function alternarCampo(campo) {
+    setCampos((actual) => ({
+      ...actual,
+      [campo]: !actual[campo]
+    }))
+  }
+
+  function setValor(campo, valor) {
+    setValores((actual) => ({ ...actual, [campo]: valor }))
+  }
+
+  async function aplicar() {
+    setGuardando(true)
+
+    const actualizados = []
+    let errores = 0
+
+    for (const id of ids) {
+      const producto = porId.get(id)
+
+      if (!producto) continue
+
+      const patch = {}
+
+      if (campos.nombre && valores.nombre.trim()) {
+        patch.nombre = valores.nombre.trim()
+      }
+
+      if (campos.nombre_comercial && valores.nombre_comercial.trim()) {
+        patch.nombre_comercial = valores.nombre_comercial.trim()
+      }
+
+      if (campos.categoria_id && valores.categoria_id) {
+        patch.categoria_id = Number(valores.categoria_id)
+      }
+
+      if (
+        campos.precio_costo &&
+        valores.precio_costo !== '' &&
+        valores.precio_costo !== null
+      ) {
+        patch.precio_costo = Number(valores.precio_costo)
+      }
+
+      if (
+        campos.precio_mayorista &&
+        valores.precio_mayorista !== '' &&
+        valores.precio_mayorista !== null
+      ) {
+        patch.precio_mayorista = Number(valores.precio_mayorista)
+      }
+
+      if (
+        campos.precio_publico &&
+        valores.precio_publico !== '' &&
+        valores.precio_publico !== null
+      ) {
+        patch.precio_publico = Number(valores.precio_publico)
+      }
+
+      if (estado === 'activar') {
+        patch.activo = true
+      }
+
+      if (estado === 'desactivar') {
+        patch.activo = false
+      }
+
+      if (Object.keys(patch).length === 0) continue
+
+      patch.updated_at = new Date().toISOString()
+
+      const { data, error } = await supabase
+        .from('productos')
+        .update(patch)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) {
+        errores++
+        console.error('Error actualizando producto ' + id + ':', error)
+        continue
+      }
+
+      actualizados.push(data)
+    }
+
+    setGuardando(false)
+
+    let detalle = `Se actualizaron ${actualizados.length} producto(s).`
+
+    if (errores > 0) {
+      detalle += ` ${errores} con error (revisá la consola).`
+    }
+
+    if (actualizados.length === 0) {
+      detalle = 'No se aplicaron cambios: completá los campos marcados.'
+    }
+
+    onAplicado(actualizados, detalle)
+  }
+
+  const hayCamposMarcados = Object.values(campos).some(Boolean)
+
+  return (
+    <div className="modal-overlay" onMouseDown={onCerrar}>
+
+      <div
+        className="modal"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+
+        <div className="modal-header">
+
+          <div>
+
+            <h2>
+              Editar {ids.length} producto(s)
+            </h2>
+
+            <p>
+              Solo se aplican los campos marcados y completados.
+              Los vacíos no se tocan.
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            className="accion-icono"
+            onClick={onCerrar}
+            title="Cerrar"
+          >
+            <X size={19} />
+          </button>
+
+        </div>
+
+        <div className="modal-cuerpo">
+
+          <div className="campos-masivos">
+
+            <label className="campo-masivo">
+              <input
+                type="checkbox"
+                checked={campos.nombre}
+                onChange={() => alternarCampo('nombre')}
+              />
+              <span>Nombre (proveedor)</span>
+              <input
+                type="text"
+                placeholder="Dejalo vacío para no tocarlo"
+                value={valores.nombre}
+                onChange={(e) => setValor('nombre', e.target.value)}
+                disabled={!campos.nombre}
+              />
+            </label>
+
+            <label className="campo-masivo">
+              <input
+                type="checkbox"
+                checked={campos.nombre_comercial}
+                onChange={() => alternarCampo('nombre_comercial')}
+              />
+              <span>Nombre comercial</span>
+              <input
+                type="text"
+                placeholder="Dejalo vacío para no tocarlo"
+                value={valores.nombre_comercial}
+                onChange={(e) =>
+                  setValor('nombre_comercial', e.target.value)
+                }
+                disabled={!campos.nombre_comercial}
+              />
+            </label>
+
+            <label className="campo-masivo">
+              <input
+                type="checkbox"
+                checked={campos.categoria_id}
+                onChange={() => alternarCampo('categoria_id')}
+              />
+              <span>Categoría</span>
+              <select
+                value={valores.categoria_id}
+                onChange={(e) =>
+                  setValor('categoria_id', e.target.value)
+                }
+                disabled={!campos.categoria_id}
+              >
+                <option value="">Seleccionar...</option>
+                {categorias.map((categoria) => (
+                  <option key={categoria.id} value={categoria.id}>
+                    {categoria.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="campo-masivo">
+              <input
+                type="checkbox"
+                checked={campos.precio_costo}
+                onChange={() => alternarCampo('precio_costo')}
+              />
+              <span>Precio proveedor</span>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Dejalo vacío para no tocarlo"
+                value={valores.precio_costo}
+                onChange={(e) =>
+                  setValor('precio_costo', e.target.value)
+                }
+                disabled={!campos.precio_costo}
+              />
+            </label>
+
+            <label className="campo-masivo">
+              <input
+                type="checkbox"
+                checked={campos.precio_mayorista}
+                onChange={() => alternarCampo('precio_mayorista')}
+              />
+              <span>Precio mayorista</span>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Dejalo vacío para no tocarlo"
+                value={valores.precio_mayorista}
+                onChange={(e) =>
+                  setValor('precio_mayorista', e.target.value)
+                }
+                disabled={!campos.precio_mayorista}
+              />
+            </label>
+
+            <label className="campo-masivo">
+              <input
+                type="checkbox"
+                checked={campos.precio_publico}
+                onChange={() => alternarCampo('precio_publico')}
+              />
+              <span>Precio minorista / público</span>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Dejalo vacío para no tocarlo"
+                value={valores.precio_publico}
+                onChange={(e) =>
+                  setValor('precio_publico', e.target.value)
+                }
+                disabled={!campos.precio_publico}
+              />
+            </label>
+
+            <div className="campo-masivo estado-masivo">
+
+              <span>
+                Estado activo/inactivo
+              </span>
+
+              <select
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+              >
+                <option value="">
+                  No cambiar
+                </option>
+                <option value="activar">
+                  Activar
+                </option>
+                <option value="desactivar">
+                  Desactivar
+                </option>
+              </select>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <div className="modal-pie">
+
+          <button
+            type="button"
+            className="sutil"
+            onClick={onCerrar}
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            className="guardar"
+            onClick={aplicar}
+            disabled={guardando || (!hayCamposMarcados && !estado)}
+          >
+            <Save size={17} />
+
+            {guardando
+              ? 'Aplicando...'
+              : 'Aplicar a ' + ids.length}
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  )
+}
+
+/* ============================================================
+   MODAL: ACCIÓN RÁPIDA (1 CAMPO PARA VARIOS PRODUCTOS)
+   ============================================================ */
+
+function ModalAccionRapida({
+  campo,
+  ids,
+  productos,
+  categorias,
+  onCerrar,
+  onAplicado
+}) {
+
+  const [valor, setValor] = useState('')
+  const [estado, setEstado] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  const porId = new Map(
+    productos.map((producto) => [producto.id, producto])
+  )
+
+  const titulos = {
+    categoria: 'Cambiar categoría',
+    precio: 'Cambiar precio (minorista / público)',
+    nombre: 'Cambiar nombre comercial',
+    estado: 'Activar / desactivar'
+  }
+
+  const ayudas = {
+    categoria: 'La categoría nueva se aplica a todos los seleccionados.',
+    precio: 'Se actualiza el precio minorista (el que ve el cliente).',
+    nombre: 'Se actualiza el nombre comercial visible. El nombre del proveedor no cambia.',
+    estado: 'Elegí si querés activar o desactivar los seleccionados.'
+  }
+
+  async function aplicar() {
+    setGuardando(true)
+
+    const actualizados = []
+    let errores = 0
+
+    for (const id of ids) {
+      const producto = porId.get(id)
+
+      if (!producto) continue
+
+      const patch = {}
+
+      if (campo === 'categoria' && valor) {
+        patch.categoria_id = Number(valor)
+      }
+
+      if (campo === 'precio' && valor !== '' && valor !== null) {
+        patch.precio_publico = Number(valor)
+      }
+
+      if (campo === 'nombre' && valor.trim()) {
+        patch.nombre_comercial = valor.trim()
+      }
+
+      if (campo === 'estado') {
+        if (estado === 'activar') patch.activo = true
+        if (estado === 'desactivar') patch.activo = false
+      }
+
+      if (Object.keys(patch).length === 0) continue
+
+      patch.updated_at = new Date().toISOString()
+
+      const { data, error } = await supabase
+        .from('productos')
+        .update(patch)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) {
+        errores++
+        console.error('Error actualizando producto ' + id + ':', error)
+        continue
+      }
+
+      actualizados.push(data)
+    }
+
+    setGuardando(false)
+
+    let detalle = `Se actualizaron ${actualizados.length} producto(s).`
+
+    if (errores > 0) {
+      detalle += ` ${errores} con error (revisá la consola).`
+    }
+
+    if (actualizados.length === 0) {
+      detalle =
+        campo === 'estado'
+          ? 'Elegí Activar o Desactivar.'
+          : 'Completá el valor para poder aplicarlo.'
+    }
+
+    onAplicado(actualizados, detalle)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={onCerrar}>
+
+      <div
+        className="modal modal-chico"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+
+        <div className="modal-header">
+
+          <div>
+
+            <h2>
+              {titulos[campo]}
+            </h2>
+
+            <p>
+              Se aplicará a {ids.length} producto(s).
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            className="accion-icono"
+            onClick={onCerrar}
+            title="Cerrar"
+          >
+            <X size={19} />
+          </button>
+
+        </div>
+
+        <div className="modal-cuerpo">
+
+          <p className="modal-ayuda">
+            {ayudas[campo]}
+          </p>
+
+          {campo === 'categoria' && (
+
+            <select
+              className="campo-grande"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+            >
+              <option value="">
+                Seleccionar categoría...
+              </option>
+
+              {categorias.map((categoria) => (
+                <option
+                  key={categoria.id}
+                  value={categoria.id}
+                >
+                  {categoria.nombre}
+                </option>
+              ))}
+
+            </select>
+
+          )}
+
+          {campo === 'precio' && (
+
+            <input
+              className="campo-grande"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Ej: 350"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+            />
+
+          )}
+
+          {campo === 'nombre' && (
+
+            <input
+              className="campo-grande"
+              type="text"
+              placeholder="Nuevo nombre comercial"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+            />
+
+          )}
+
+          {campo === 'estado' && (
+
+            <select
+              className="campo-grande"
+              value={estado}
+              onChange={(e) => setEstado(e.target.value)}
+            >
+              <option value="">
+                Elegir...
+              </option>
+              <option value="activar">
+                Activar
+              </option>
+              <option value="desactivar">
+                Desactivar
+              </option>
+            </select>
+
+          )}
+
+        </div>
+
+        <div className="modal-pie">
+
+          <button
+            type="button"
+            className="sutil"
+            onClick={onCerrar}
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            className="guardar"
+            onClick={aplicar}
+            disabled={guardando}
+          >
+            <Save size={17} />
+
+            {guardando
+              ? 'Aplicando...'
+              : 'Aplicar'}
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  )
+}
+
+/* ============================================================
+   MODAL: NORMALIZAR NOMBRES COMERCIALES
+   ============================================================ */
+
+function ModalNormalizar({
+  ids,
+  productos,
+  onCerrar,
+  onAplicado
+}) {
+
+  const porId = new Map(
+    productos.map((producto) => [producto.id, producto])
+  )
+
+  const propuestas = proponerNormalizaciones(
+    ids.map((id) => porId.get(id)).filter(Boolean)
+  )
+
+  const [marcadas, setMarcadas] = useState(
+    () => new Set(propuestas.map((propuesta) => propuesta.id))
+  )
+
+  const [guardando, setGuardando] = useState(false)
+
+  function alternar(id) {
+    setMarcadas((actual) => {
+      const nuevo = new Set(actual)
+
+      if (nuevo.has(id)) {
+        nuevo.delete(id)
+      } else {
+        nuevo.add(id)
+      }
+
+      return nuevo
+    })
+  }
+
+  async function aplicar() {
+    setGuardando(true)
+
+    const actualizados = []
+    let errores = 0
+
+    for (const propuesta of propuestas) {
+      if (!marcadas.has(propuesta.id)) continue
+
+      const { data, error } = await supabase
+        .from('productos')
+        .update({
+          nombre_comercial: propuesta.propuesto,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', propuesta.id)
+        .select()
+        .single()
+
+      if (error) {
+        errores++
+        console.error(
+          'Error normalizando producto ' + propuesta.id + ':',
+          error
+        )
+        continue
+      }
+
+      actualizados.push(data)
+    }
+
+    setGuardando(false)
+
+    let detalle = `Se normalizaron ${actualizados.length} nombre(s).`
+
+    if (errores > 0) {
+      detalle += ` ${errores} con error (revisá la consola).`
+    }
+
+    if (actualizados.length === 0) {
+      detalle = 'No se aplicó ningún cambio.'
+    }
+
+    onAplicado(actualizados, detalle)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={onCerrar}>
+
+      <div
+        className="modal modal-grande"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+
+        <div className="modal-header">
+
+          <div>
+
+            <h2>
+              Normalizar nombres comerciales
+            </h2>
+
+            <p>
+              Reemplaza términos genéricos del proveedor
+              (ej: "jarro sublimable" → "Taza personalizada")
+              conservando las características del producto.
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            className="accion-icono"
+            onClick={onCerrar}
+            title="Cerrar"
+          >
+            <X size={19} />
+          </button>
+
+        </div>
+
+        <div className="modal-cuerpo">
+
+          {propuestas.length === 0 ? (
+
+            <p className="modal-ayuda">
+              Ninguno de los productos seleccionados
+              coincide con las reglas de normalización.
+            </p>
+
+          ) : (
+
+            <div className="normalizar-lista">
+
+              <label className="normalizar-fila cabecera">
+
+                <input
+                  type="checkbox"
+                  checked={
+                    propuestas.length > 0 &&
+                    propuestas.every((propuesta) =>
+                      marcadas.has(propuesta.id)
+                    )
+                  }
+                  onChange={() => {
+                    const todas =
+                      propuestas.every((propuesta) =>
+                        marcadas.has(propuesta.id)
+                      )
+
+                    setMarcadas(() => {
+                      const nuevo = new Set()
+
+                      if (!todas) {
+                        propuestas.forEach((propuesta) =>
+                          nuevo.add(propuesta.id)
+                        )
+                      }
+
+                      return nuevo
+                    })
+                  }}
+                />
+
+                <span>Nombre actual</span>
+                <span>Nombre comercial propuesto</span>
+
+              </label>
+
+              {propuestas.map((propuesta) => (
+                <label
+                  className="normalizar-fila"
+                  key={propuesta.id}
+                >
+
+                  <input
+                    type="checkbox"
+                    checked={marcadas.has(propuesta.id)}
+                    onChange={() => alternar(propuesta.id)}
+                  />
+
+                  <span
+                    className="normalizar-nombre"
+                    title={propuesta.nombre}
+                  >
+                    {decodificarNombre(propuesta.nombre)}
+                  </span>
+
+                  <strong>
+                    {propuesta.propuesto}
+                  </strong>
+
+                </label>
+              ))}
+
+            </div>
+
+          )}
+
+        </div>
+
+        <div className="modal-pie">
+
+          <button
+            type="button"
+            className="sutil"
+            onClick={onCerrar}
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            className="guardar"
+            onClick={aplicar}
+            disabled={guardando || marcadas.size === 0}
+          >
+            <Check size={17} />
+
+            {guardando
+              ? 'Aplicando...'
+              : `Aplicar ${marcadas.size} cambio(s)`}
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  )
+}
+
+/* ============================================================
+   MODAL: ELIMINAR (VERIFICA RELACIONES ANTES)
+   ============================================================ */
+
+function ModalEliminar({
+  ids,
+  productos,
+  onCerrar,
+  onEliminados,
+  onDesactivados
+}) {
+
+  const porId = new Map(
+    productos.map((producto) => [producto.id, producto])
+  )
+
+  const [verificando, setVerificando] = useState(true)
+  const [bloqueados, setBloqueados] = useState([])
+  const [procesando, setProcesando] = useState(false)
+
+  useEffect(() => {
+    let activo = true
+
+    verificarRelaciones(ids).then((resultado) => {
+      if (!activo) return
+
+      setBloqueados(resultado)
+      setVerificando(false)
+    })
+
+    return () => {
+      activo = false
+    }
+  }, [ids])
+
+  const eliminables = ids.filter(
+    (id) => !bloqueados.some((bloqueado) => bloqueado.id === id)
+  )
+
+  async function eliminar() {
+    setProcesando(true)
+
+    const { error } = await supabase
+      .from('productos')
+      .delete()
+      .in('id', eliminables)
+
+    setProcesando(false)
+
+    if (error) {
+      console.error(error)
+      alert('No se pudieron eliminar los productos:\n\n' + error.message)
+      return
+    }
+
+    onEliminados(eliminables)
+  }
+
+  async function desactivar() {
+    setProcesando(true)
+
+    const idsBloqueados = bloqueados.map((bloqueado) => bloqueado.id)
+
+    const { error } = await supabase
+      .from('productos')
+      .update({
+        activo: false,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', idsBloqueados)
+
+    setProcesando(false)
+
+    if (error) {
+      console.error(error)
+      alert('No se pudieron desactivar los productos:\n\n' + error.message)
+      return
+    }
+
+    onDesactivados(idsBloqueados)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={onCerrar}>
+
+      <div
+        className="modal modal-grande"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+
+        <div className="modal-header">
+
+          <div>
+
+            <h2>
+              Eliminar {ids.length} producto(s)
+            </h2>
+
+            <p>
+              Antes de borrar se verifican las relaciones
+              (pedidos, variantes, personalizaciones, etc.).
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            className="accion-icono"
+            onClick={onCerrar}
+            title="Cerrar"
+          >
+            <X size={19} />
+          </button>
+
+        </div>
+
+        <div className="modal-cuerpo">
+
+          {verificando ? (
+
+            <p className="modal-ayuda">
+              Verificando relaciones...
+            </p>
+
+          ) : bloqueados.length === 0 ? (
+
+            <p className="modal-ayuda">
+              Todos los productos seleccionados pueden eliminarse
+              sin afectar pedidos ni configuraciones.
+            </p>
+
+          ) : (
+
+            <div className="bloqueados-lista">
+
+              <div className="bloqueado-cabecera">
+
+                <strong>
+                  {bloqueados.length} producto(s) no se pueden eliminar
+                  porque tienen relaciones:
+                </strong>
+
+              </div>
+
+              {bloqueados.map((bloqueado) => (
+                <div
+                  className="bloqueado-fila"
+                  key={bloqueado.id}
+                >
+
+                  <strong>
+                    {nombreProducto(porId.get(bloqueado.id))}
+                  </strong>
+
+                  <small>
+                    {bloqueado.tablas.join(', ')}
+                  </small>
+
+                </div>
+              ))}
+
+              <p className="modal-ayuda">
+                Podés desactivarlos: quedan ocultos del catálogo
+                y conservan todas sus relaciones.
+              </p>
+
+            </div>
+
+          )}
+
+        </div>
+
+        <div className="modal-pie">
+
+          <button
+            type="button"
+            className="sutil"
+            onClick={onCerrar}
+            disabled={procesando}
+          >
+            Cancelar
+          </button>
+
+          {eliminables.length > 0 && !verificando && (
+            <button
+              type="button"
+              className="peligro"
+              onClick={eliminar}
+              disabled={procesando}
+            >
+              <Trash2 size={17} />
+
+              {procesando
+                ? 'Procesando...'
+                : `Eliminar ${eliminables.length}`}
+            </button>
+          )}
+
+          {bloqueados.length > 0 && !verificando && (
+            <button
+              type="button"
+              className="guardar"
+              onClick={desactivar}
+              disabled={procesando}
+            >
+              <Check size={17} />
+
+              {procesando
+                ? 'Procesando...'
+                : `Desactivar ${bloqueados.length}`}
+            </button>
+          )}
+
+        </div>
+
+      </div>
+
+    </div>
+  )
+}
 /* ============================================================
    DETALLE PRODUCTO
    ============================================================ */
