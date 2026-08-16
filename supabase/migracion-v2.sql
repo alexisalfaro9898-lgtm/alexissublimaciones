@@ -563,6 +563,8 @@ end $$;
 --     que pertenezca al cliente autenticado (o que sea personal).
 --
 --     INSERT: el cliente sube archivos solo de sus pedidos.
+--             El personal (es_personal) también puede subir
+--             (pedidos creados por staff con foto adjunta).
 --     SELECT: el cliente (y el personal) pueden generar signed URLs
 --             de sus archivos (createSignedUrl).
 --     DELETE: el cliente puede borrar archivos de sus pedidos
@@ -583,14 +585,17 @@ create policy archivos_storage_insert_own on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'pedido-archivos'
-    and exists (
-      select 1
-      from public.pedidos p
-      join public.clientes c on lower(c.email) = lower(p.cliente_email)
-      where c.auth_user_id = auth.uid()
-        and p.id = (
-          select (regexp_match(name, '^pedidos/([0-9]+)/'))[1]::bigint
-        )
+    and (
+      public.es_personal()
+      or exists (
+        select 1
+        from public.pedidos p
+        join public.clientes c on lower(c.email) = lower(p.cliente_email)
+        where c.auth_user_id = auth.uid()
+          and p.id = (
+            select (regexp_match(name, '^pedidos/([0-9]+)/'))[1]::bigint
+          )
+      )
     )
   );
 
