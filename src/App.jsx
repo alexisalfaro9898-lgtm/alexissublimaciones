@@ -3374,7 +3374,7 @@ function Productos({
                 <label>
 
                   <strong>
-                    Costo proveedor
+                    Precio proveedor
                   </strong>
 
                   <input
@@ -3580,6 +3580,94 @@ function Productos({
                       {producto.descripcion ||
                         'Sin descripción'}
                     </p>
+
+
+                    <div className="producto-precios">
+
+                      <div>
+
+                        <span>
+                          Proveedor
+                        </span>
+
+                        <strong className={
+                          producto.precio_costo
+                            ? undefined
+                            : 'sin-precio'
+                        }>
+
+                          {producto.precio_costo ? (
+                            '$' +
+                            Number(
+                              producto.precio_costo
+                            ).toLocaleString(
+                              'es-UY'
+                            )
+                          ) : (
+                            '—'
+                          )}
+
+                        </strong>
+
+                      </div>
+
+
+                      <div>
+
+                        <span>
+                          Mayorista
+                        </span>
+
+                        <strong className={
+                          producto.precio_mayorista
+                            ? undefined
+                            : 'sin-precio'
+                        }>
+
+                          {producto.precio_mayorista ? (
+                            '$' +
+                            Number(
+                              producto.precio_mayorista
+                            ).toLocaleString(
+                              'es-UY'
+                            )
+                          ) : (
+                            '—'
+                          )}
+
+                        </strong>
+
+                      </div>
+
+
+                      <div>
+
+                        <span>
+                          Minorista
+                        </span>
+
+                        <strong className={
+                          producto.precio_publico
+                            ? undefined
+                            : 'sin-precio'
+                        }>
+
+                          {producto.precio_publico ? (
+                            '$' +
+                            Number(
+                              producto.precio_publico
+                            ).toLocaleString(
+                              'es-UY'
+                            )
+                          ) : (
+                            '—'
+                          )}
+
+                        </strong>
+
+                      </div>
+
+                    </div>
 
 
                     <div className="producto-footer">
@@ -3805,7 +3893,7 @@ function ProductoDetalle({
             <div>
 
               <span>
-                Costo proveedor
+                Precio proveedor
               </span>
 
               <strong>
@@ -4151,23 +4239,42 @@ function PreciosProducto({
 }) {
 
   const [
+    precioCosto,
+    setPrecioCosto
+  ] = useState(
+    producto.precio_costo
+      ? String(
+          Number(
+            producto.precio_costo
+          )
+        )
+      : ''
+  )
+
+
+  const [
     multiplicadorMayorista,
     setMultiplicadorMayorista
-  ] = useState(2.5)
+  ] = useState(2)
 
 
   const [
     multiplicadorPublico,
     setMultiplicadorPublico
-  ] = useState(3)
+  ] = useState(2.5)
 
 
   const [
     precioMayorista,
     setPrecioMayorista
   ] = useState(
-    producto.precio_mayorista ??
-    ''
+    producto.precio_mayorista
+      ? String(
+          Number(
+            producto.precio_mayorista
+          )
+        )
+      : ''
   )
 
 
@@ -4175,8 +4282,13 @@ function PreciosProducto({
     precioPublico,
     setPrecioPublico
   ] = useState(
-    producto.precio_publico ??
-    ''
+    producto.precio_publico
+      ? String(
+          Number(
+            producto.precio_publico
+          )
+        )
+      : ''
   )
 
 
@@ -4188,22 +4300,38 @@ function PreciosProducto({
 
   const costo =
     Number(
-      producto.precio_costo
+      precioCosto
     ) || 0
 
 
-  const precioMayoristaSugerido =
+  const precioMayoristaAuto =
     costo *
     Number(
       multiplicadorMayorista
     )
 
 
-  const precioPublicoSugerido =
+  const precioMinoristaAuto =
     costo *
     Number(
       multiplicadorPublico
     )
+
+
+  const precioMayoristaFinal =
+    precioMayorista === ''
+      ? precioMayoristaAuto
+      : Number(
+          precioMayorista
+        )
+
+
+  const precioMinoristaFinal =
+    precioPublico === ''
+      ? precioMinoristaAuto
+      : Number(
+          precioPublico
+        )
 
 
   async function guardarPrecios() {
@@ -4217,19 +4345,18 @@ function PreciosProducto({
       .from('productos')
       .update({
 
-        precio_mayorista:
-          precioMayorista === ''
+        precio_costo:
+          precioCosto === ''
             ? null
             : Number(
-                precioMayorista
+                precioCosto
               ),
 
+        precio_mayorista:
+          precioMayoristaFinal,
+
         precio_publico:
-          precioPublico === ''
-            ? null
-            : Number(
-                precioPublico
-              )
+          precioMinoristaFinal
 
       })
       .eq(
@@ -4256,6 +4383,19 @@ function PreciosProducto({
     }
 
 
+    setPrecioMayorista(
+      String(
+        precioMayoristaFinal
+      )
+    )
+
+    setPrecioPublico(
+      String(
+        precioMinoristaFinal
+      )
+    )
+
+
     alert(
       'Precios guardados correctamente.'
     )
@@ -4277,8 +4417,9 @@ function PreciosProducto({
           </h2>
 
           <p>
-            Calculá precios sugeridos y
-            definí tus precios reales.
+            El mayorista y el minorista se calculan
+            automáticamente desde el precio proveedor.
+            Podés modificarlos y guardar.
           </p>
 
         </div>
@@ -4292,25 +4433,33 @@ function PreciosProducto({
         <div className="precio-box">
 
           <span className="precio-label">
-            Costo proveedor
+            Precio proveedor
           </span>
 
-          <strong className="precio-grande">
+          <label>
 
-            $
-            {' '}
-            {costo.toLocaleString(
-              'es-UY',
-              {
-                minimumFractionDigits:
-                  2
+            <span>
+              Precio pagado al proveedor
+            </span>
+
+            <input
+              type="number"
+              step="0.01"
+              value={
+                precioCosto
               }
-            )}
+              onChange={(e) =>
+                setPrecioCosto(
+                  e.target.value
+                )
+              }
+              placeholder="Ej: 1000"
+            />
 
-          </strong>
+          </label>
 
           <small>
-            Precio pagado al proveedor
+            Base para calcular el resto
           </small>
 
         </div>
@@ -4371,13 +4520,13 @@ function PreciosProducto({
           <div className="precio-sugerido">
 
             <span>
-              Sugerido
+              Automático
             </span>
 
             <strong>
 
               $
-              {precioMayoristaSugerido.toLocaleString(
+              {precioMayoristaAuto.toLocaleString(
                 'es-UY',
                 {
                   minimumFractionDigits:
@@ -4393,7 +4542,7 @@ function PreciosProducto({
           <label>
 
             <span>
-              Tu precio mayorista
+              Modificar si querés
             </span>
 
             <input
@@ -4406,7 +4555,15 @@ function PreciosProducto({
                   e.target.value
                 )
               }
-              placeholder="Ej: 2500"
+              placeholder={
+                precioMayoristaAuto
+                  ? `${
+                      precioMayoristaAuto.toLocaleString(
+                        'es-UY'
+                      )
+                    } (auto)`
+                  : 'Ingresá el precio'
+              }
             />
 
           </label>
@@ -4417,7 +4574,7 @@ function PreciosProducto({
         <div className="precio-box">
 
           <span className="precio-label">
-            Precio público
+            Precio minorista
           </span>
 
 
@@ -4469,13 +4626,13 @@ function PreciosProducto({
           <div className="precio-sugerido">
 
             <span>
-              Sugerido
+              Automático
             </span>
 
             <strong>
 
               $
-              {precioPublicoSugerido.toLocaleString(
+              {precioMinoristaAuto.toLocaleString(
                 'es-UY',
                 {
                   minimumFractionDigits:
@@ -4491,7 +4648,7 @@ function PreciosProducto({
           <label>
 
             <span>
-              Tu precio público
+              Modificar si querés
             </span>
 
             <input
@@ -4504,7 +4661,15 @@ function PreciosProducto({
                   e.target.value
                 )
               }
-              placeholder="Ej: 3000"
+              placeholder={
+                precioMinoristaAuto
+                  ? `${
+                      precioMinoristaAuto.toLocaleString(
+                        'es-UY'
+                      )
+                    } (auto)`
+                  : 'Ingresá el precio'
+              }
             />
 
           </label>

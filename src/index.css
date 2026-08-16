@@ -552,6 +552,36 @@ nav {
   font-size: 11px;
 }
 
+.producto-precios {
+  margin-top: 13px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.producto-precios > div {
+  background: #f7f9fb;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.producto-precios span {
+  display: block;
+  font-size: 10px;
+  color: #8a94a6;
+  margin-bottom: 3px;
+}
+
+.producto-precios strong {
+  font-size: 13px;
+  color: #172033;
+}
+
+.producto-precios strong.sin-precio {
+  color: #c0c7d1;
+}
+
 .cargando {
   grid-column: 1 / -1;
   text-align: center;
