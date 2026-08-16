@@ -882,6 +882,28 @@ nav {
   margin: 0 0 8px;
 }
 
+.catalogo-mas {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 25px 0 5px;
+}
+
+.boton-ver-mas {
+  background: #111;
+  color: #fff;
+  border: none;
+  padding: 12px 26px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.boton-ver-mas:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 
 /* DETALLE PRODUCTO CLIENTE */
 

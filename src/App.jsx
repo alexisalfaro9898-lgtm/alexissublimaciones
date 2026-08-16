@@ -90,32 +90,52 @@ async function cargarCategorias() {
     setCargandoProductos(true)
 
 
-    const { data, error } = await supabase
-      .from('productos')
-      .select(`
-        *,
-        categorias (
-          nombre
+    const todos = []
+
+    let desde = 0
+
+
+    while (true) {
+
+      const { data, error } = await supabase
+        .from('productos')
+        .select(`
+          *,
+          categorias (
+            nombre
+          )
+        `)
+        .order('id', { ascending: false })
+        .range(desde, desde + 999)
+
+
+      if (error) {
+
+        console.error(
+          'Error cargando productos:',
+          error
         )
-      `)
-      .eq('activo', true)
-      .order('orden')
+
+        setCargandoProductos(false)
+
+        return
+      }
 
 
-    if (error) {
+      todos.push(...(data || []))
 
-      console.error(
-        'Error cargando productos:',
-        error
-      )
 
-      setCargandoProductos(false)
+      if (!data || data.length < 1000) {
 
-      return
+        break
+      }
+
+
+      desde += 1000
     }
 
 
-    setProductos(data || [])
+    setProductos(todos)
 
     setCargandoProductos(false)
   }  useEffect(() => {

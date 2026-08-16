@@ -29,25 +29,48 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
   const [productoSeleccionado, setProductoSeleccionado] = useState(null)
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null)
   const [cargando, setCargando] = useState(true)
+  const [cargandoMas, setCargandoMas] = useState(false)
+  const [totalProductos, setTotalProductos] = useState(0)
+  const [limite, setLimite] = useState(100)
 
-  async function cargarCatalogo() {
-    setCargando(true)
+  async function cargarCatalogo(
+    categoriaId = null,
+    cuantos = 100,
+    agregar = false
+  ) {
+    if (agregar) {
+      setCargandoMas(true)
+    } else {
+      setCargando(true)
+    }
+
+    let consulta = supabase
+      .from('productos')
+      .select(`
+        *,
+        categorias (
+          id,
+          nombre
+        )
+      `, { count: 'exact' })
+      .eq('activo', true)
+
+    if (categoriaId) {
+      consulta = consulta.eq(
+        'categoria_id',
+        categoriaId
+      )
+    }
+
+    consulta = consulta
+      .order('orden', { ascending: true })
+      .range(0, cuantos - 1)
 
     const [
       respuestaProductos,
       respuestaCategorias
     ] = await Promise.all([
-      supabase
-        .from('productos')
-        .select(`
-          *,
-          categorias (
-            id,
-            nombre
-          )
-        `)
-        .eq('activo', true)
-        .order('orden'),
+      consulta,
 
       supabase
         .from('categorias')
@@ -70,9 +93,45 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
       )
     }
 
-    setProductos(respuestaProductos.data || [])
+    setProductos((actuales) =>
+      agregar
+        ? [
+            ...actuales,
+            ...(respuestaProductos.data || []).filter(
+              (nuevo) =>
+                !actuales.some(
+                  (actual) =>
+                    actual.id === nuevo.id
+                )
+            )
+          ]
+        : (respuestaProductos.data || [])
+    )
+
+    setTotalProductos(
+      respuestaProductos.count ??
+      (respuestaProductos.data || []).length
+    )
+
     setCategorias(respuestaCategorias.data || [])
     setCargando(false)
+    setCargandoMas(false)
+  }
+
+  function seleccionarCategoria(categoriaId) {
+    setCategoriaSeleccionada(categoriaId)
+    setLimite(100)
+    cargarCatalogo(categoriaId, 100)
+  }
+
+  function verMasProductos() {
+    const nuevoLimite = limite + 100
+    setLimite(nuevoLimite)
+    cargarCatalogo(
+      categoriaSeleccionada,
+      nuevoLimite,
+      true
+    )
   }
 useEffect(() => {
     cargarCatalogo()
@@ -209,7 +268,7 @@ useEffect(() => {
                       : 'categoria-filtro'
                   }
                   onClick={() =>
-                    setCategoriaSeleccionada(null)
+                    seleccionarCategoria(null)
                   }
                 >
                   Todos
@@ -224,7 +283,7 @@ useEffect(() => {
                         : 'categoria-filtro'
                     }
                     onClick={() =>
-                      setCategoriaSeleccionada(categoria.id)
+                      seleccionarCategoria(categoria.id)
                     }
                   >
                     {categoria.nombre}
@@ -260,6 +319,26 @@ useEffect(() => {
                     <p>
                       Probá con otra búsqueda o categoría.
                     </p>
+                  </div>
+                )}
+
+              {!cargando &&
+                productosFiltrados.length > 0 &&
+                productosFiltrados.length <
+                  totalProductos && (
+                  <div className="catalogo-mas">
+                    <button
+                      className="boton-ver-mas"
+                      type="button"
+                      onClick={verMasProductos}
+                      disabled={cargandoMas}
+                    >
+                      {cargandoMas
+                        ? 'Cargando...'
+                        : `Ver más productos (${
+                            productosFiltrados.length
+                          } de ${totalProductos})`}
+                    </button>
                   </div>
                 )}
             </>
