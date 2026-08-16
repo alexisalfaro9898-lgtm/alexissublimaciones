@@ -60,6 +60,8 @@ function App({ usuario, cerrarSesion }) {
 
   const [busqueda, setBusqueda] = useState('')
 
+  const [orden, setOrden] = useState('orden')
+
   const [cargandoProductos, setCargandoProductos] =
     useState(false)
 
@@ -238,6 +240,30 @@ async function cargarCategorias() {
           busqueda.toLowerCase()
         )
     )
+
+  const productosOrdenados = [...productosFiltrados].sort((a, b) => {
+    if (orden === 'nombre_asc') {
+      return (a.nombre_comercial || a.nombre).localeCompare(
+        b.nombre_comercial || b.nombre,
+        'es'
+      )
+    }
+    if (orden === 'nombre_desc') {
+      return (b.nombre_comercial || b.nombre).localeCompare(
+        a.nombre_comercial || a.nombre,
+        'es'
+      )
+    }
+    const pa = Number(a.precio_publico ?? a.precio ?? 0)
+    const pb = Number(b.precio_publico ?? b.precio ?? 0)
+    if (orden === 'precio_asc') {
+      return pa - pb
+    }
+    if (orden === 'precio_desc') {
+      return pb - pa
+    }
+    return 0
+  })
 
 
   return (
@@ -432,10 +458,12 @@ async function cargarCategorias() {
         {pagina === 'Productos' && (
 
           <Productos
-            productos={productosFiltrados}
+            productos={productosOrdenados}
             categorias={categorias}
             busqueda={busqueda}
             setBusqueda={setBusqueda}
+            orden={orden}
+            setOrden={setOrden}
             cargando={cargandoProductos}
             onAbrirProducto={abrirProducto}
             onProductoCreado={cargarProductos}
@@ -3004,6 +3032,8 @@ function Productos({
   categorias,
   busqueda,
   setBusqueda,
+  orden,
+  setOrden,
   cargando,
   onAbrirProducto,
   onProductoCreado
@@ -3506,6 +3536,37 @@ function Productos({
                 )
               }
             />
+
+          </div>
+
+          <div className="catalogo-orden-caja">
+
+            <span>Ordenar:</span>
+
+            <select
+              className="catalogo-orden"
+              value={orden}
+              onChange={(e) =>
+                setOrden(e.target.value)
+              }
+              aria-label="Ordenar productos"
+            >
+              <option value="orden">
+                Destacados
+              </option>
+              <option value="nombre_asc">
+                Nombre A-Z
+              </option>
+              <option value="nombre_desc">
+                Nombre Z-A
+              </option>
+              <option value="precio_asc">
+                Precio $ ↑
+              </option>
+              <option value="precio_desc">
+                Precio $ ↓
+              </option>
+            </select>
 
           </div>
 
