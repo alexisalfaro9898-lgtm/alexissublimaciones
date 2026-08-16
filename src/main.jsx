@@ -1364,6 +1364,13 @@ function obtenerPrecio(producto, tipo) {
     }
   }
 
+  if (
+    producto.precio !== null &&
+    producto.precio !== undefined
+  ) {
+    return Number(producto.precio)
+  }
+
   return null
 }
 
