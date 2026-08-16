@@ -3680,6 +3680,23 @@ function Productos({
                       </span>
 
 
+                      <span className={
+                        producto.stock
+                          ? 'producto-stock disponible'
+                          : producto.stock === 0
+                            ? 'producto-stock agotado'
+                            : 'producto-stock'
+                      }>
+
+                        {producto.stock
+                          ? 'Stock disponible'
+                          : producto.stock === 0
+                            ? 'Agotado'
+                            : 'Stock —'}
+
+                      </span>
+
+
                       <ChevronRight
                         size={18}
                       />

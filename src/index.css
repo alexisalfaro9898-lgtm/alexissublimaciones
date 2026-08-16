@@ -582,6 +582,20 @@ nav {
   color: #c0c7d1;
 }
 
+.producto-stock {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a94a6;
+}
+
+.producto-stock.disponible {
+  color: #1e9e4f;
+}
+
+.producto-stock.agotado {
+  color: #d64545;
+}
+
 .cargando {
   grid-column: 1 / -1;
   text-align: center;
