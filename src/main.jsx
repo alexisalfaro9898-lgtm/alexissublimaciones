@@ -27,6 +27,7 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
   const [productos, setProductos] = useState([])
   const [categorias, setCategorias] = useState([])
   const [busqueda, setBusqueda] = useState('')
+  const [orden, setOrden] = useState('orden')
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null)
   const [productoSeleccionado, setProductoSeleccionado] = useState(null)
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null)
@@ -152,6 +153,30 @@ useEffect(() => {
     return coincideBusqueda && coincideCategoria
   })
 
+  const productosOrdenados = [...productosFiltrados].sort((a, b) => {
+    if (orden === 'nombre_asc') {
+      return (a.nombre_comercial || a.nombre).localeCompare(
+        b.nombre_comercial || b.nombre,
+        'es'
+      )
+    }
+    if (orden === 'nombre_desc') {
+      return (b.nombre_comercial || b.nombre).localeCompare(
+        a.nombre_comercial || a.nombre,
+        'es'
+      )
+    }
+    const pa = Number(a.precio_publico ?? a.precio ?? 0)
+    const pb = Number(b.precio_publico ?? b.precio ?? 0)
+    if (orden === 'precio_asc') {
+      return pa - pb
+    }
+    if (orden === 'precio_desc') {
+      return pb - pa
+    }
+    return 0
+  })
+
   function cerrarProducto() {
     setProductoSeleccionado(null)
   }
@@ -249,9 +274,19 @@ useEffect(() => {
                     Elegí el producto que querés personalizar.
                   </p>
                 </div>
+                <span className="catalogo-conteo">
+                  {categorias.find(
+                    (c) => c.id === categoriaSeleccionada
+                  )?.nombre || 'Todos los productos'}
+                  {' — '}
+                  {productosFiltrados.length}{' '}
+                  {productosFiltrados.length === 1
+                    ? 'producto'
+                    : 'productos'}
+                </span>
               </section>
 
-              <div className="catalogo-buscador">
+              <div className="catalogo-herramientas">
                 <input
                   type="text"
                   placeholder="Buscar producto..."
@@ -260,6 +295,30 @@ useEffect(() => {
                     setBusqueda(e.target.value)
                   }
                 />
+                <select
+                  className="catalogo-orden"
+                  value={orden}
+                  onChange={(e) =>
+                    setOrden(e.target.value)
+                  }
+                  aria-label="Ordenar productos"
+                >
+                  <option value="orden">
+                    Orden: destacados
+                  </option>
+                  <option value="nombre_asc">
+                    Nombre: A a Z
+                  </option>
+                  <option value="nombre_desc">
+                    Nombre: Z a A
+                  </option>
+                  <option value="precio_asc">
+                    Precio: menor a mayor
+                  </option>
+                  <option value="precio_desc">
+                    Precio: mayor a menor
+                  </option>
+                </select>
               </div>
 
               <div className="catalogo-categorias">
@@ -299,7 +358,7 @@ useEffect(() => {
                 </div>
               ) : (
                 <div className="catalogo-grid">
-                  {productosFiltrados.map((producto) => (
+                  {productosOrdenados.map((producto) => (
                     <TarjetaProducto
                       key={producto.id}
                       producto={producto}
@@ -313,7 +372,7 @@ useEffect(() => {
               )}
 
               {!cargando &&
-                productosFiltrados.length === 0 && (
+                productosOrdenados.length === 0 && (
                   <div className="catalogo-vacio">
                     <h3>
                       No encontramos productos
@@ -325,8 +384,8 @@ useEffect(() => {
                 )}
 
               {!cargando &&
-                productosFiltrados.length > 0 &&
-                productosFiltrados.length <
+                productosOrdenados.length > 0 &&
+                productosOrdenados.length <
                   totalProductos && (
                   <div className="catalogo-mas">
                     <button
@@ -338,7 +397,7 @@ useEffect(() => {
                       {cargandoMas
                         ? 'Cargando...'
                         : `Ver más productos (${
-                            productosFiltrados.length
+                            productosOrdenados.length
                           } de ${totalProductos})`}
                     </button>
                   </div>
