@@ -295,30 +295,33 @@ useEffect(() => {
                     setBusqueda(e.target.value)
                   }
                 />
-                <select
-                  className="catalogo-orden"
-                  value={orden}
-                  onChange={(e) =>
-                    setOrden(e.target.value)
-                  }
-                  aria-label="Ordenar productos"
-                >
-                  <option value="orden">
-                    Orden: destacados
-                  </option>
-                  <option value="nombre_asc">
-                    Nombre: A a Z
-                  </option>
-                  <option value="nombre_desc">
-                    Nombre: Z a A
-                  </option>
-                  <option value="precio_asc">
-                    Precio: menor a mayor
-                  </option>
-                  <option value="precio_desc">
-                    Precio: mayor a menor
-                  </option>
-                </select>
+                <div className="catalogo-orden-caja">
+                  <span>Ordenar:</span>
+                  <select
+                    className="catalogo-orden"
+                    value={orden}
+                    onChange={(e) =>
+                      setOrden(e.target.value)
+                    }
+                    aria-label="Ordenar productos"
+                  >
+                    <option value="orden">
+                      Destacados
+                    </option>
+                    <option value="nombre_asc">
+                      Nombre A-Z
+                    </option>
+                    <option value="nombre_desc">
+                      Nombre Z-A
+                    </option>
+                    <option value="precio_asc">
+                      Precio $ ↑
+                    </option>
+                    <option value="precio_desc">
+                      Precio $ ↓
+                    </option>
+                  </select>
+                </div>
               </div>
 
               <div className="catalogo-categorias">

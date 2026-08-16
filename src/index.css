@@ -784,6 +784,7 @@ nav {
   display: flex;
   gap: 10px;
   margin: 18px 0 12px;
+  align-items: center;
 }
 
 .catalogo-herramientas input {
@@ -796,6 +797,20 @@ nav {
   background: #fff;
 }
 
+.catalogo-orden-caja {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.catalogo-orden-caja span {
+  font-size: 14px;
+  color: #172033;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .catalogo-orden {
   padding: 12px 14px;
   border: 1px solid #e8ebf1;
@@ -804,16 +819,6 @@ nav {
   background: #fff;
   color: #172033;
   cursor: pointer;
-}
-
-@media (max-width: 640px) {
-  .catalogo-herramientas {
-    flex-direction: column;
-  }
-
-  .catalogo-orden {
-    width: 100%;
-  }
 }
 
 .catalogo-categorias {
