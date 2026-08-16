@@ -38,6 +38,9 @@ import {
 } from './lib/pedidos'
 
 
+const nombreProducto = (p) => p?.nombre_comercial || p?.nombre
+
+
 /* ============================================================
    APP PRINCIPAL
    ============================================================ */
@@ -229,7 +232,7 @@ async function cargarCategorias() {
 
   const productosFiltrados =
     productos.filter((producto) =>
-      (producto.nombre || '')
+      ((producto.nombre_comercial || '') + ' ' + (producto.nombre || ''))
         .toLowerCase()
         .includes(
           busqueda.toLowerCase()
@@ -1484,7 +1487,7 @@ useEffect(() => {
                   key={producto.id}
                   value={producto.id}
                 >
-                  {producto.nombre}
+                  {nombreProducto(producto)}
                   {' — $'}
                   {Number(
                     producto.precio_publico ?? producto.precio ?? 0
@@ -3565,7 +3568,7 @@ function Productos({
                           producto.imagen_principal
                         }
                         alt={
-                          producto.nombre
+                          nombreProducto(producto)
                         }
                       />
 
@@ -3592,7 +3595,7 @@ function Productos({
 
 
                     <h3>
-                      {producto.nombre}
+                      {nombreProducto(producto)}
                     </h3>
 
 
@@ -3849,7 +3852,7 @@ function ProductoDetalle({
 
 
           <h1>
-            {producto.nombre}
+            {nombreProducto(producto)}
           </h1>
 
 
@@ -3874,7 +3877,7 @@ function ProductoDetalle({
                 producto.imagen_principal
               }
               alt={
-                producto.nombre
+                nombreProducto(producto)
               }
             />
 
@@ -3899,7 +3902,7 @@ function ProductoDetalle({
 
 
           <h2>
-            {producto.nombre}
+            {nombreProducto(producto)}
           </h2>
 
 

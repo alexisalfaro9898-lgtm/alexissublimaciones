@@ -16,6 +16,8 @@ import {
   obtenerUrlFirmada
 } from './lib/pedidos'
 
+const nombreProducto = (p) => p?.nombre_comercial || p?.nombre
+
 /* ============================================================
    PORTAL CLIENTE
    ============================================================ */
@@ -139,7 +141,7 @@ useEffect(() => {
 
   const productosFiltrados = productos.filter((producto) => {
     const coincideBusqueda =
-      producto.nombre
+      (producto.nombre_comercial || producto.nombre)
         ?.toLowerCase()
         .includes(busqueda.toLowerCase())
 
@@ -405,7 +407,7 @@ function TarjetaProducto({
 
           <img
             src={producto.imagen_principal}
-            alt={producto.nombre}
+            alt={nombreProducto(producto)}
           />
 
         ) : (
@@ -425,7 +427,7 @@ function TarjetaProducto({
         </span>
 
         <h3>
-          {producto.nombre}
+          {nombreProducto(producto)}
         </h3>
 
         {producto.descripcion && (
@@ -721,7 +723,7 @@ useEffect(() => {
 
             <img
               src={producto.imagen_principal}
-              alt={producto.nombre}
+              alt={nombreProducto(producto)}
             />
 
           ) : (
@@ -741,7 +743,7 @@ useEffect(() => {
           </span>
 
           <h1>
-            {producto.nombre}
+            {nombreProducto(producto)}
           </h1>
 
           {producto.descripcion && (
