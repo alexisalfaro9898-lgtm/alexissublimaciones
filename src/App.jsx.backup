@@ -1,0 +1,787 @@
+import { useEffect, useState } from 'react'
+import {
+  Home,
+  ShoppingBag,
+  Users,
+  Package,
+  Palette,
+  Truck,
+  Settings,
+  Plus,
+  Clock,
+  CheckCircle,
+  ClipboardList,
+  Search,
+  ChevronRight,
+  ArrowLeft
+} from 'lucide-react'
+import { supabase } from './lib/supabase'
+
+function App() {
+  const [pagina, setPagina] = useState('Inicio')
+  const [categorias, setCategorias] = useState([])
+  const [productos, setProductos] = useState([])
+  const [productoSeleccionado, setProductoSeleccionado] = useState(null)
+  const [busqueda, setBusqueda] = useState('')
+  const [cargandoProductos, setCargandoProductos] = useState(false)
+
+  useEffect(() => {
+    cargarCategorias()
+  }, [])
+
+  useEffect(() => {
+    if (pagina === 'Productos') {
+      cargarProductos()
+    }
+  }, [pagina])
+
+  async function cargarCategorias() {
+    const { data, error } = await supabase
+      .from('categorias')
+      .select('*')
+      .eq('activo', true)
+      .order('orden')
+
+    if (!error) {
+      setCategorias(data || [])
+    }
+  }
+
+  async function cargarProductos() {
+    setCargandoProductos(true)
+
+    const { data, error } = await supabase
+      .from('productos')
+      .select(`
+        *,
+        categorias (
+          nombre
+        )
+      `)
+      .eq('activo', true)
+      .order('orden')
+
+    if (!error) {
+      setProductos(data || [])
+    } else {
+      console.error('Error cargando productos:', error)
+    }
+
+    setCargandoProductos(false)
+  }
+
+  const abrirProducto = (producto) => {
+    setProductoSeleccionado(producto)
+    setPagina('ProductoDetalle')
+  }
+
+  const volverAProductos = () => {
+    setProductoSeleccionado(null)
+    setPagina('Productos')
+  }
+
+  const menu = [
+    { nombre: 'Inicio', icono: Home },
+    { nombre: 'Pedidos', icono: ShoppingBag },
+    { nombre: 'Clientes', icono: Users },
+    { nombre: 'Productos', icono: Package },
+    { nombre: 'Diseños', icono: Palette },
+    { nombre: 'Proveedores', icono: Truck },
+    { nombre: 'Configuración', icono: Settings }
+  ]
+
+  const productosFiltrados = productos.filter((producto) =>
+    producto.nombre
+      .toLowerCase()
+      .includes(busqueda.toLowerCase())
+  )
+
+  return (
+    <div className="app">
+
+      <aside className="sidebar">
+
+        <div className="logo">
+          <div className="logo-icon">
+            SP
+          </div>
+
+          <div>
+            <strong>Sistema</strong>
+            <span>Pedidos</span>
+          </div>
+        </div>
+
+        <nav>
+
+          {menu.map((item) => {
+
+            const Icon = item.icono
+
+            return (
+              <button
+                key={item.nombre}
+                className={`menu-item ${
+                  pagina === item.nombre ? 'activo' : ''
+                }`}
+                onClick={() => {
+                  setPagina(item.nombre)
+                  setProductoSeleccionado(null)
+                }}
+              >
+                <Icon size={20} />
+                <span>{item.nombre}</span>
+              </button>
+            )
+
+          })}
+
+        </nav>
+
+        <div className="sidebar-bottom">
+
+          <div className="usuario">
+
+            <div className="avatar">
+              A
+            </div>
+
+            <div>
+              <strong>Administrador</strong>
+              <span>Administrador</span>
+            </div>
+
+          </div>
+
+        </div>
+
+      </aside>
+
+
+      <main className="contenido">
+
+        {pagina === 'Inicio' && (
+
+          <Dashboard
+            categorias={categorias}
+            onNuevoPedido={() => setPagina('Pedidos')}
+          />
+
+        )}
+
+
+        {pagina === 'Productos' && (
+
+          <Productos
+            productos={productosFiltrados}
+            busqueda={busqueda}
+            setBusqueda={setBusqueda}
+            cargando={cargandoProductos}
+            onAbrirProducto={abrirProducto}
+          />
+
+        )}
+
+
+        {pagina === 'ProductoDetalle' && productoSeleccionado && (
+
+          <ProductoDetalle
+            producto={productoSeleccionado}
+            volver={volverAProductos}
+          />
+
+        )}
+
+
+        {pagina !== 'Inicio' &&
+          pagina !== 'Productos' &&
+          pagina !== 'ProductoDetalle' && (
+
+          <div className="pagina-proximamente">
+
+            <Package size={50} />
+
+            <h2>{pagina}</h2>
+
+            <p>
+              Esta sección la construiremos a continuación.
+            </p>
+
+          </div>
+
+        )}
+
+      </main>
+
+    </div>
+  )
+}
+
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+
+function Dashboard({ categorias, onNuevoPedido }) {
+
+  return (
+
+    <>
+
+      <header className="topbar">
+
+        <div>
+          <h1>Buenos días 👋</h1>
+
+          <p>
+            Este es el resumen de tu negocio.
+          </p>
+        </div>
+
+        <button
+          className="nuevo-pedido"
+          onClick={onNuevoPedido}
+        >
+          <Plus size={19} />
+          Nuevo pedido
+        </button>
+
+      </header>
+
+
+      <section className="estadisticas">
+
+        <div className="tarjeta">
+
+          <div className="tarjeta-icono azul">
+            <ClipboardList size={22} />
+          </div>
+
+          <div>
+            <span>Pedidos nuevos</span>
+            <strong>0</strong>
+          </div>
+
+        </div>
+
+
+        <div className="tarjeta">
+
+          <div className="tarjeta-icono violeta">
+            <Palette size={22} />
+          </div>
+
+          <div>
+            <span>En diseño</span>
+            <strong>0</strong>
+          </div>
+
+        </div>
+
+
+        <div className="tarjeta">
+
+          <div className="tarjeta-icono naranja">
+            <Clock size={22} />
+          </div>
+
+          <div>
+            <span>En producción</span>
+            <strong>0</strong>
+          </div>
+
+        </div>
+
+
+        <div className="tarjeta">
+
+          <div className="tarjeta-icono verde">
+            <CheckCircle size={22} />
+          </div>
+
+          <div>
+            <span>Listos</span>
+            <strong>0</strong>
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <section className="grid-principal">
+
+        <div className="panel">
+
+          <div className="panel-header">
+
+            <div>
+              <h2>Últimos pedidos</h2>
+              <p>Actividad reciente</p>
+            </div>
+
+            <button className="ver-todos">
+              Ver todos
+            </button>
+
+          </div>
+
+
+          <div className="vacio">
+
+            <div className="vacio-icono">
+              <ShoppingBag size={30} />
+            </div>
+
+            <h3>No hay pedidos todavía</h3>
+
+            <p>
+              Cuando recibas tu primer pedido aparecerá aquí.
+            </p>
+
+            <button
+              className="crear"
+              onClick={onNuevoPedido}
+            >
+              <Plus size={18} />
+              Crear pedido
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <div className="panel">
+
+          <div className="panel-header">
+
+            <div>
+              <h2>Categorías</h2>
+              <p>Productos disponibles</p>
+            </div>
+
+          </div>
+
+
+          <div className="categorias">
+
+            {categorias.map((categoria) => (
+
+              <div
+                className="categoria"
+                key={categoria.id}
+              >
+
+                <div className="categoria-icono">
+                  <Package size={20} />
+                </div>
+
+                <div>
+
+                  <strong>
+                    {categoria.nombre}
+                  </strong>
+
+                  <span>
+                    {categoria.descripcion}
+                  </span>
+
+                </div>
+
+              </div>
+
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </>
+
+  )
+}
+
+
+/* ============================================================
+   PRODUCTOS
+   ============================================================ */
+
+function Productos({
+  productos,
+  busqueda,
+  setBusqueda,
+  cargando,
+  onAbrirProducto
+}) {
+
+  return (
+
+    <>
+
+      <header className="topbar">
+
+        <div>
+
+          <h1>Productos</h1>
+
+          <p>
+            Administrá los productos disponibles para tus pedidos.
+          </p>
+
+        </div>
+
+        <button className="nuevo-pedido">
+
+          <Plus size={19} />
+
+          Nuevo producto
+
+        </button>
+
+      </header>
+
+
+      <div className="productos-toolbar">
+
+        <div className="buscador">
+
+          <Search size={18} />
+
+          <input
+            type="text"
+            placeholder="Buscar producto..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+
+        </div>
+
+        <span className="cantidad-productos">
+          {productos.length} productos
+        </span>
+
+      </div>
+
+
+      <div className="productos-grid">
+
+        {cargando && (
+
+          <div className="cargando">
+            Cargando productos...
+          </div>
+
+        )}
+
+
+        {!cargando && productos.map((producto) => (
+
+          <div
+            className="producto-card"
+            key={producto.id}
+            onClick={() => onAbrirProducto(producto)}
+            style={{ cursor: 'pointer' }}
+          >
+
+            <div className="producto-imagen">
+
+              {producto.imagen_principal ? (
+
+                <img
+                  src={producto.imagen_principal}
+                  alt={producto.nombre}
+                />
+
+              ) : (
+
+                <Package size={42} />
+
+              )}
+
+            </div>
+
+
+            <div className="producto-info">
+
+              <span className="producto-categoria">
+
+                {producto.categorias?.nombre || 'Sin categoría'}
+
+              </span>
+
+              <h3>
+                {producto.nombre}
+              </h3>
+
+              <p>
+                {producto.descripcion || 'Sin descripción'}
+              </p>
+
+              <div className="producto-footer">
+
+                <span className="producto-codigo">
+                  {producto.codigo_interno || 'Sin código'}
+                </span>
+
+                <ChevronRight size={18} />
+
+              </div>
+
+            </div>
+
+          </div>
+
+        ))}
+
+
+        {!cargando && productos.length === 0 && (
+
+          <div className="sin-productos">
+
+            <Package size={42} />
+
+            <h3>No encontramos productos</h3>
+
+            <p>
+              Probá con otro término de búsqueda.
+            </p>
+
+          </div>
+
+        )}
+
+      </div>
+
+    </>
+
+  )
+}
+
+
+/* ============================================================
+   DETALLE DEL PRODUCTO
+   ============================================================ */
+
+function ProductoDetalle({ producto, volver }) {
+
+  return (
+
+    <>
+
+      <header className="topbar">
+
+        <div>
+
+          <button
+            className="boton-volver"
+            onClick={volver}
+          >
+            <ArrowLeft size={18} />
+            Volver a productos
+          </button>
+
+          <h1>{producto.nombre}</h1>
+
+          <p>
+            Información y configuración del producto.
+          </p>
+
+        </div>
+
+      </header>
+
+
+      <section className="detalle-producto">
+
+        <div className="detalle-imagen">
+
+          {producto.imagen_principal ? (
+
+            <img
+              src={producto.imagen_principal}
+              alt={producto.nombre}
+            />
+
+          ) : (
+
+            <Package size={70} />
+
+          )}
+
+        </div>
+
+
+        <div className="detalle-informacion">
+
+          <span className="producto-categoria">
+
+            {producto.categorias?.nombre || 'Sin categoría'}
+
+          </span>
+
+          <h2>
+            {producto.nombre}
+          </h2>
+
+          <p className="detalle-descripcion">
+
+            {producto.descripcion || 'Sin descripción'}
+
+          </p>
+
+
+          <div className="detalle-datos">
+
+            <div>
+              <span>Código interno</span>
+
+              <strong>
+                {producto.codigo_interno || 'Sin código'}
+              </strong>
+            </div>
+
+
+            <div>
+              <span>Precio</span>
+
+              <strong>
+                {producto.precio
+                  ? `$ ${producto.precio}`
+                  : 'Sin precio'}
+              </strong>
+            </div>
+
+
+            <div>
+              <span>Estado</span>
+
+              <strong>
+                {producto.activo ? 'Activo' : 'Inactivo'}
+              </strong>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <section className="detalle-secciones">
+
+        <div className="panel">
+
+          <div className="panel-header">
+
+            <div>
+
+              <h2>Variantes</h2>
+
+              <p>
+                Presentaciones, colores, talles y modelos.
+              </p>
+
+            </div>
+
+            <button className="boton-secundario">
+              <Plus size={17} />
+              Agregar variante
+            </button>
+
+          </div>
+
+
+          <div className="seccion-vacia">
+
+            <Package size={30} />
+
+            <span>
+              Todavía no hay variantes configuradas.
+            </span>
+
+          </div>
+
+        </div>
+
+
+        <div className="panel">
+
+          <div className="panel-header">
+
+            <div>
+
+              <h2>Personalizaciones</h2>
+
+              <p>
+                Qué tipos de personalización admite este producto.
+              </p>
+
+            </div>
+
+            <button className="boton-secundario">
+              <Plus size={17} />
+              Agregar
+            </button>
+
+          </div>
+
+
+          <div className="seccion-vacia">
+
+            <Palette size={30} />
+
+            <span>
+              Todavía no hay personalizaciones configuradas.
+            </span>
+
+          </div>
+
+        </div>
+
+
+        <div className="panel">
+
+          <div className="panel-header">
+
+            <div>
+
+              <h2>Preguntas del cliente</h2>
+
+              <p>
+                Información que necesitaremos para realizar el pedido.
+              </p>
+
+            </div>
+
+            <button className="boton-secundario">
+              <Plus size={17} />
+              Agregar pregunta
+            </button>
+
+          </div>
+
+
+          <div className="seccion-vacia">
+
+            <ClipboardList size={30} />
+
+            <span>
+              Todavía no hay preguntas configuradas.
+            </span>
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </>
+
+  )
+}
+
+
+export default App

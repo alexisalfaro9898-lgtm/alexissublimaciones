@@ -1,0 +1,981 @@
+import { StrictMode, useEffect, useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+import Auth from './Auth.jsx'
+import { supabase } from './lib/supabase'
+
+/* ============================================================
+   PORTAL CLIENTE
+   ============================================================ */
+
+function PortalCliente({ cliente, cerrarSesion, tipo }) {
+  const [productos, setProductos] = useState([])
+  const [categorias, setCategorias] = useState([])
+  const [busqueda, setBusqueda] = useState('')
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null)
+  const [productoSeleccionado, setProductoSeleccionado] = useState(null)
+  const [cargando, setCargando] = useState(true)
+
+  useEffect(() => {
+    cargarCatalogo()
+  }, [])
+
+  async function cargarCatalogo() {
+    setCargando(true)
+
+    const [
+      respuestaProductos,
+      respuestaCategorias
+    ] = await Promise.all([
+      supabase
+        .from('productos')
+        .select(`
+          *,
+          categorias (
+            id,
+            nombre
+          )
+        `)
+        .eq('activo', true)
+        .order('orden'),
+
+      supabase
+        .from('categorias')
+        .select('*')
+        .eq('activo', true)
+        .order('orden')
+    ])
+
+    if (respuestaProductos.error) {
+      console.error(
+        'Error cargando productos:',
+        respuestaProductos.error
+      )
+    }
+
+    if (respuestaCategorias.error) {
+      console.error(
+        'Error cargando categorías:',
+        respuestaCategorias.error
+      )
+    }
+
+    setProductos(respuestaProductos.data || [])
+    setCategorias(respuestaCategorias.data || [])
+    setCargando(false)
+  }
+
+  const productosFiltrados = productos.filter((producto) => {
+    const coincideBusqueda =
+      producto.nombre
+        ?.toLowerCase()
+        .includes(busqueda.toLowerCase())
+
+    const coincideCategoria =
+      !categoriaSeleccionada ||
+      producto.categoria_id === categoriaSeleccionada
+
+    return coincideBusqueda && coincideCategoria
+  })
+
+  if (productoSeleccionado) {
+    return (
+      <DetalleCliente
+        producto={productoSeleccionado}
+        tipo={tipo}
+        volver={() => setProductoSeleccionado(null)}
+        cerrarSesion={cerrarSesion}
+      />
+    )
+  }
+
+  return (
+    <div className="portal-cliente">
+
+      <header className="portal-header">
+
+        <div>
+          <h1>Sistema de Pedidos</h1>
+
+          <p>
+            Hola, {cliente?.nombre || 'cliente'} 👋
+          </p>
+        </div>
+
+        <div className="portal-header-derecha">
+
+          <span className="tipo-cliente">
+            {tipo === 'mayorista'
+              ? 'Cliente mayorista'
+              : 'Cliente minorista'}
+          </span>
+
+          <button
+            onClick={cerrarSesion}
+            className="boton-salir"
+          >
+            Cerrar sesión
+          </button>
+
+        </div>
+
+      </header>
+
+      <main className="portal-contenido">
+
+        <section className="catalogo-titulo">
+
+          <div>
+            <h2>Catálogo</h2>
+
+            <p>
+              Elegí el producto que querés personalizar.
+            </p>
+          </div>
+
+        </section>
+
+        <div className="catalogo-buscador">
+
+          <input
+            type="text"
+            placeholder="Buscar producto..."
+            value={busqueda}
+            onChange={(e) =>
+              setBusqueda(e.target.value)
+            }
+          />
+
+        </div>
+
+        <div className="catalogo-categorias">
+
+          <button
+            className={
+              categoriaSeleccionada === null
+                ? 'categoria-filtro activo'
+                : 'categoria-filtro'
+            }
+            onClick={() =>
+              setCategoriaSeleccionada(null)
+            }
+          >
+            Todos
+          </button>
+
+          {categorias.map((categoria) => (
+
+            <button
+              key={categoria.id}
+              className={
+                categoriaSeleccionada === categoria.id
+                  ? 'categoria-filtro activo'
+                  : 'categoria-filtro'
+              }
+              onClick={() =>
+                setCategoriaSeleccionada(categoria.id)
+              }
+            >
+              {categoria.nombre}
+            </button>
+
+          ))}
+
+        </div>
+
+        {cargando ? (
+
+          <div className="catalogo-cargando">
+            Cargando catálogo...
+          </div>
+
+        ) : (
+
+          <div className="catalogo-grid">
+
+            {productosFiltrados.map((producto) => (
+
+              <TarjetaProducto
+                key={producto.id}
+                producto={producto}
+                tipo={tipo}
+                abrir={() =>
+                  setProductoSeleccionado(producto)
+                }
+              />
+
+            ))}
+
+          </div>
+
+        )}
+
+        {!cargando &&
+          productosFiltrados.length === 0 && (
+
+            <div className="catalogo-vacio">
+
+              <h3>
+                No encontramos productos
+              </h3>
+
+              <p>
+                Probá con otra búsqueda o categoría.
+              </p>
+
+            </div>
+
+          )}
+
+      </main>
+
+    </div>
+  )
+}
+
+
+/* ============================================================
+   PORTAL MAYORISTA
+   ============================================================ */
+
+function PortalMayorista({
+  cliente,
+  cerrarSesion
+}) {
+  return (
+    <PortalCliente
+      cliente={cliente}
+      cerrarSesion={cerrarSesion}
+      tipo="mayorista"
+    />
+  )
+}
+
+
+/* ============================================================
+   TARJETA PRODUCTO
+   ============================================================ */
+
+function TarjetaProducto({
+  producto,
+  tipo,
+  abrir
+}) {
+  const precio = obtenerPrecio(producto, tipo)
+
+  return (
+    <div
+      className="catalogo-producto"
+      onClick={abrir}
+    >
+
+      <div className="catalogo-producto-imagen">
+
+        {producto.imagen_principal ? (
+
+          <img
+            src={producto.imagen_principal}
+            alt={producto.nombre}
+          />
+
+        ) : (
+
+          <div className="catalogo-sin-imagen">
+            Sin imagen
+          </div>
+
+        )}
+
+      </div>
+
+      <div className="catalogo-producto-info">
+
+        <span>
+          {producto.categorias?.nombre || 'Producto'}
+        </span>
+
+        <h3>
+          {producto.nombre}
+        </h3>
+
+        {producto.descripcion && (
+
+          <p>
+            {producto.descripcion}
+          </p>
+
+        )}
+
+        <div className="catalogo-producto-precio">
+
+          {precio !== null ? (
+
+            <>
+              <small>Precio</small>
+
+              <strong>
+                $ {formatearPrecio(precio)}
+              </strong>
+            </>
+
+          ) : (
+
+            <strong>
+              Consultar precio
+            </strong>
+
+          )}
+
+        </div>
+
+      </div>
+
+    </div>
+  )
+}
+
+
+/* ============================================================
+   DETALLE PRODUCTO CLIENTE
+   ============================================================ */
+
+function DetalleCliente({
+  producto,
+  tipo,
+  volver,
+  cerrarSesion
+}) {
+  const [variantes, setVariantes] = useState([])
+  const [cargando, setCargando] = useState(true)
+
+  useEffect(() => {
+    cargarVariantes()
+  }, [producto.id])
+
+  async function cargarVariantes() {
+
+    const { data, error } = await supabase
+      .from('producto_variantes')
+      .select('*')
+      .eq('producto_id', producto.id)
+      .eq('activo', true)
+      .order('id')
+
+    if (error) {
+      console.error(
+        'Error cargando variantes:',
+        error
+      )
+    }
+
+    setVariantes(data || [])
+    setCargando(false)
+  }
+
+  const precio = obtenerPrecio(producto, tipo)
+
+  return (
+    <div className="portal-cliente">
+
+      <header className="portal-header">
+
+        <button
+          className="boton-volver-cliente"
+          onClick={volver}
+        >
+          ← Volver al catálogo
+        </button>
+
+        <button
+          onClick={cerrarSesion}
+          className="boton-salir"
+        >
+          Cerrar sesión
+        </button>
+
+      </header>
+
+      <main className="detalle-cliente">
+
+        <div className="detalle-cliente-imagen">
+
+          {producto.imagen_principal ? (
+
+            <img
+              src={producto.imagen_principal}
+              alt={producto.nombre}
+            />
+
+          ) : (
+
+            <div>
+              Sin imagen
+            </div>
+
+          )}
+
+        </div>
+
+        <div className="detalle-cliente-info">
+
+          <span>
+            {producto.categorias?.nombre || 'Producto'}
+          </span>
+
+          <h1>
+            {producto.nombre}
+          </h1>
+
+          {producto.descripcion && (
+
+            <p>
+              {producto.descripcion}
+            </p>
+
+          )}
+
+          <div className="detalle-precio">
+
+            {precio !== null ? (
+
+              <>
+                <small>
+                  Precio {tipo === 'mayorista'
+                    ? 'mayorista'
+                    : 'público'}
+                </small>
+
+                <strong>
+                  $ {formatearPrecio(precio)}
+                </strong>
+              </>
+
+            ) : (
+
+              <strong>
+                Consultar precio
+              </strong>
+
+            )}
+
+          </div>
+
+          {cargando ? (
+
+            <p>
+              Cargando variantes...
+            </p>
+
+          ) : variantes.length > 0 ? (
+
+            <section className="detalle-variantes">
+
+              <h2>
+                Opciones disponibles
+              </h2>
+
+              {variantes.map((variante) => (
+
+                <div
+                  className="variante-cliente"
+                  key={variante.id}
+                >
+
+                  <div>
+
+                    <strong>
+                      {variante.nombre}
+                    </strong>
+
+                    {variante.color && (
+                      <span>
+                        Color: {variante.color}
+                      </span>
+                    )}
+
+                    {variante.talle && (
+                      <span>
+                        Talle: {variante.talle}
+                      </span>
+                    )}
+
+                    {variante.capacidad && (
+                      <span>
+                        Capacidad: {variante.capacidad}
+                      </span>
+                    )}
+
+                  </div>
+
+                  {variante.precio && (
+
+                    <strong>
+                      $ {formatearPrecio(variante.precio)}
+                    </strong>
+
+                  )}
+
+                </div>
+
+              ))}
+
+            </section>
+
+          ) : null}
+
+          <button className="boton-pedir">
+            Solicitar este producto
+          </button>
+
+        </div>
+
+      </main>
+
+    </div>
+  )
+}
+
+
+/* ============================================================
+   PRECIOS
+   ============================================================ */
+
+function obtenerPrecio(producto, tipo) {
+
+  if (tipo === 'mayorista') {
+
+    if (
+      producto.precio_mayorista !== null &&
+      producto.precio_mayorista !== undefined
+    ) {
+      return Number(producto.precio_mayorista)
+    }
+
+    if (
+      producto.precio_mayorista_sugerido !== null &&
+      producto.precio_mayorista_sugerido !== undefined
+    ) {
+      return Number(
+        producto.precio_mayorista_sugerido
+      )
+    }
+  }
+
+  if (tipo === 'minorista') {
+
+    if (
+      producto.precio_publico !== null &&
+      producto.precio_publico !== undefined
+    ) {
+      return Number(producto.precio_publico)
+    }
+
+    if (
+      producto.precio_publico_sugerido !== null &&
+      producto.precio_publico_sugerido !== undefined
+    ) {
+      return Number(
+        producto.precio_publico_sugerido
+      )
+    }
+  }
+
+  return null
+}
+
+
+function formatearPrecio(valor) {
+
+  return Number(valor).toLocaleString(
+    'es-UY',
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }
+  )
+}
+
+
+/* ============================================================
+   SISTEMA
+   ============================================================ */
+
+function Sistema() {
+
+  const [usuario, setUsuario] = useState(null)
+  const [tipoCuenta, setTipoCuenta] = useState(null)
+  const [cargando, setCargando] = useState(true)
+
+  useEffect(() => {
+
+    verificarSesion()
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+
+        if (!session) {
+
+          setUsuario(null)
+          setTipoCuenta(null)
+          setCargando(false)
+
+        }
+
+      }
+    )
+
+    return () => {
+      subscription.unsubscribe()
+    }
+
+  }, [])
+
+
+  async function verificarSesion() {
+
+    const { data, error } =
+      await supabase.auth.getSession()
+
+    if (error) {
+
+      console.error(
+        'Error obteniendo sesión:',
+        error
+      )
+
+      setCargando(false)
+      return
+
+    }
+
+    if (!data.session) {
+
+      setCargando(false)
+      return
+
+    }
+
+    await cargarPerfil(
+      data.session.user
+    )
+
+    setCargando(false)
+  }
+
+
+  async function cargarPerfil(authUser) {
+
+    /* ========================================================
+       USUARIO INTERNO
+       ======================================================== */
+
+    const {
+      data: usuarioDB,
+      error: errorUsuario
+    } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('auth_user_id', authUser.id)
+      .maybeSingle()
+
+    if (errorUsuario) {
+
+      console.error(
+        'Error buscando usuario interno:',
+        errorUsuario
+      )
+
+    }
+
+    if (usuarioDB) {
+
+      const {
+        data: rolDB,
+        error: errorRol
+      } = await supabase
+        .from('roles')
+        .select('id, nombre')
+        .eq('id', usuarioDB.rol_id)
+        .maybeSingle()
+
+      if (errorRol) {
+
+        console.error(
+          'Error buscando rol:',
+          errorRol
+        )
+
+      }
+
+      setUsuario({
+        ...usuarioDB,
+        roles: rolDB
+      })
+
+      setTipoCuenta('usuario')
+
+      return
+    }
+
+
+    /* ========================================================
+       CLIENTE
+       ======================================================== */
+
+    const {
+      data: clienteDB,
+      error: errorCliente
+    } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('auth_user_id', authUser.id)
+      .maybeSingle()
+
+    if (errorCliente) {
+
+      console.error(
+        'Error buscando cliente:',
+        errorCliente
+      )
+
+      return
+    }
+
+    if (clienteDB) {
+
+      setUsuario(clienteDB)
+
+      if (
+        clienteDB.tipo_cliente === 'mayorista'
+      ) {
+
+        setTipoCuenta('mayorista')
+
+      } else {
+
+        setTipoCuenta('minorista')
+
+      }
+
+      return
+    }
+
+    console.error(
+      'La cuenta existe pero no tiene usuario ni cliente.'
+    )
+  }
+
+
+  async function cerrarSesion() {
+
+    await supabase.auth.signOut()
+
+    setUsuario(null)
+    setTipoCuenta(null)
+  }
+
+
+  /* ==========================================================
+     CARGANDO
+     ========================================================== */
+
+  if (cargando) {
+
+    return (
+
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+
+        <h2>
+          Cargando sistema...
+        </h2>
+
+      </div>
+
+    )
+  }
+
+
+  /* ==========================================================
+     SIN SESIÓN
+     ========================================================== */
+
+  if (!usuario) {
+
+    return (
+
+      <Auth
+        onAuthenticated={({
+          authUser,
+          tipo,
+          usuario,
+          cliente
+        }) => {
+
+          if (tipo === 'usuario') {
+
+            setUsuario(usuario)
+            setTipoCuenta('usuario')
+
+            return
+          }
+
+          if (tipo === 'cliente') {
+
+            setUsuario(cliente)
+
+            if (
+              cliente?.tipo_cliente === 'mayorista'
+            ) {
+
+              setTipoCuenta('mayorista')
+
+            } else {
+
+              setTipoCuenta('minorista')
+
+            }
+
+            return
+          }
+
+          if (authUser) {
+
+            cargarPerfil(authUser)
+
+          }
+
+        }}
+      />
+
+    )
+  }
+
+
+  /* ==========================================================
+     PANEL INTERNO
+     ========================================================== */
+
+  if (tipoCuenta === 'usuario') {
+
+    const rol = usuario.rol_id
+
+    if (
+      rol === 1 ||
+      rol === 2 ||
+      rol === 3 ||
+      rol === 4
+    ) {
+
+      return (
+
+        <App
+          usuario={usuario}
+          cerrarSesion={cerrarSesion}
+        />
+
+      )
+    }
+
+    return (
+
+      <div className="pantalla-centro">
+
+        <h2>
+          Cuenta sin configurar
+        </h2>
+
+        <p>
+          Tu usuario interno todavía no tiene
+          un rol válido.
+        </p>
+
+        <button onClick={cerrarSesion}>
+          Cerrar sesión
+        </button>
+
+      </div>
+
+    )
+  }
+
+
+  /* ==========================================================
+     MAYORISTA
+     ========================================================== */
+
+  if (tipoCuenta === 'mayorista') {
+
+    return (
+
+      <PortalMayorista
+        cliente={usuario}
+        cerrarSesion={cerrarSesion}
+      />
+
+    )
+  }
+
+
+  /* ==========================================================
+     MINORISTA
+     ========================================================== */
+
+  if (tipoCuenta === 'minorista') {
+
+    return (
+
+      <PortalCliente
+        cliente={usuario}
+        cerrarSesion={cerrarSesion}
+        tipo="minorista"
+      />
+
+    )
+  }
+
+
+  return (
+
+    <div className="pantalla-centro">
+
+      <h2>
+        Cuenta sin configurar
+      </h2>
+
+      <p>
+        No se pudo determinar el tipo de cuenta.
+      </p>
+
+      <button onClick={cerrarSesion}>
+        Cerrar sesión
+      </button>
+
+    </div>
+
+  )
+}
+
+
+/* ============================================================
+   INICIO
+   ============================================================ */
+
+createRoot(
+  document.getElementById('root')
+).render(
+
+  <StrictMode>
+    <Sistema />
+  </StrictMode>
+
+)

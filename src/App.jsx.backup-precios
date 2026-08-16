@@ -1,0 +1,1882 @@
+import { useEffect, useState } from 'react'
+import {
+  Home,
+  ShoppingBag,
+  Users,
+  Package,
+  Palette,
+  Truck,
+  Settings,
+  Plus,
+  Clock,
+  CheckCircle,
+  ClipboardList,
+  Search,
+  ChevronRight,
+  ArrowLeft,
+  Trash2,
+  Pencil,
+  X,
+  Save,
+  Image,
+  Type,
+  User,
+  FileImage
+} from 'lucide-react'
+import { supabase } from './lib/supabase'
+
+function App() {
+  const [pagina, setPagina] = useState('Inicio')
+  const [categorias, setCategorias] = useState([])
+  const [productos, setProductos] = useState([])
+  const [productoSeleccionado, setProductoSeleccionado] = useState(null)
+  const [busqueda, setBusqueda] = useState('')
+  const [cargandoProductos, setCargandoProductos] = useState(false)
+
+  useEffect(() => {
+    cargarCategorias()
+  }, [])
+
+  useEffect(() => {
+    if (pagina === 'Productos') {
+      cargarProductos()
+    }
+  }, [pagina])
+
+  async function cargarCategorias() {
+    const { data, error } = await supabase
+      .from('categorias')
+      .select('*')
+      .eq('activo', true)
+      .order('orden')
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setCategorias(data || [])
+  }
+
+  async function cargarProductos() {
+    setCargandoProductos(true)
+
+    const { data, error } = await supabase
+      .from('productos')
+      .select(`
+        *,
+        categorias (
+          nombre
+        )
+      `)
+      .eq('activo', true)
+      .order('orden')
+
+    if (error) {
+      console.error('Error cargando productos:', error)
+      setCargandoProductos(false)
+      return
+    }
+
+    setProductos(data || [])
+    setCargandoProductos(false)
+  }
+
+  function abrirProducto(producto) {
+    setProductoSeleccionado(producto)
+    setPagina('ProductoDetalle')
+  }
+
+  function volverAProductos() {
+    setProductoSeleccionado(null)
+    setPagina('Productos')
+  }
+
+  const menu = [
+    { nombre: 'Inicio', icono: Home },
+    { nombre: 'Pedidos', icono: ShoppingBag },
+    { nombre: 'Clientes', icono: Users },
+    { nombre: 'Productos', icono: Package },
+    { nombre: 'Diseños', icono: Palette },
+    { nombre: 'Proveedores', icono: Truck },
+    { nombre: 'Configuración', icono: Settings }
+  ]
+
+  const productosFiltrados = productos.filter((producto) =>
+    producto.nombre.toLowerCase().includes(busqueda.toLowerCase())
+  )
+
+  return (
+    <div className="app">
+
+      <aside className="sidebar">
+
+        <div className="logo">
+          <div className="logo-icon">SP</div>
+
+          <div>
+            <strong>Sistema</strong>
+            <span>Pedidos</span>
+          </div>
+        </div>
+
+        <nav>
+
+          {menu.map((item) => {
+            const Icon = item.icono
+
+            return (
+              <button
+                key={item.nombre}
+                className={`menu-item ${
+                  pagina === item.nombre ? 'activo' : ''
+                }`}
+                onClick={() => {
+                  setPagina(item.nombre)
+                  setProductoSeleccionado(null)
+                }}
+              >
+                <Icon size={20} />
+                <span>{item.nombre}</span>
+              </button>
+            )
+          })}
+
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="usuario">
+
+            <div className="avatar">A</div>
+
+            <div>
+              <strong>Administrador</strong>
+              <span>Administrador</span>
+            </div>
+
+          </div>
+        </div>
+
+      </aside>
+
+
+      <main className="contenido">
+
+        {pagina === 'Inicio' && (
+          <Dashboard
+            categorias={categorias}
+            onNuevoPedido={() => setPagina('Pedidos')}
+          />
+        )}
+
+        {pagina === 'Productos' && (
+          <Productos
+            productos={productosFiltrados}
+            busqueda={busqueda}
+            setBusqueda={setBusqueda}
+            cargando={cargandoProductos}
+            onAbrirProducto={abrirProducto}
+          />
+        )}
+
+        {pagina === 'ProductoDetalle' && productoSeleccionado && (
+          <ProductoDetalle
+            producto={productoSeleccionado}
+            volver={volverAProductos}
+          />
+        )}
+
+        {pagina !== 'Inicio' &&
+          pagina !== 'Productos' &&
+          pagina !== 'ProductoDetalle' && (
+            <div className="pagina-proximamente">
+              <Package size={50} />
+
+              <h2>{pagina}</h2>
+
+              <p>
+                Esta sección la construiremos a continuación.
+              </p>
+            </div>
+          )}
+
+      </main>
+
+    </div>
+  )
+}
+
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+
+function Dashboard({ categorias, onNuevoPedido }) {
+
+  return (
+    <>
+      <header className="topbar">
+
+        <div>
+          <h1>Buenos días 👋</h1>
+
+          <p>
+            Este es el resumen de tu negocio.
+          </p>
+        </div>
+
+        <button
+          className="nuevo-pedido"
+          onClick={onNuevoPedido}
+        >
+          <Plus size={19} />
+          Nuevo pedido
+        </button>
+
+      </header>
+
+
+      <section className="estadisticas">
+
+        <div className="tarjeta">
+          <div className="tarjeta-icono azul">
+            <ClipboardList size={22} />
+          </div>
+
+          <div>
+            <span>Pedidos nuevos</span>
+            <strong>0</strong>
+          </div>
+        </div>
+
+
+        <div className="tarjeta">
+          <div className="tarjeta-icono violeta">
+            <Palette size={22} />
+          </div>
+
+          <div>
+            <span>En diseño</span>
+            <strong>0</strong>
+          </div>
+        </div>
+
+
+        <div className="tarjeta">
+          <div className="tarjeta-icono naranja">
+            <Clock size={22} />
+          </div>
+
+          <div>
+            <span>En producción</span>
+            <strong>0</strong>
+          </div>
+        </div>
+
+
+        <div className="tarjeta">
+          <div className="tarjeta-icono verde">
+            <CheckCircle size={22} />
+          </div>
+
+          <div>
+            <span>Listos</span>
+            <strong>0</strong>
+          </div>
+        </div>
+
+      </section>
+
+
+      <section className="grid-principal">
+
+        <div className="panel">
+
+          <div className="panel-header">
+
+            <div>
+              <h2>Últimos pedidos</h2>
+              <p>Actividad reciente</p>
+            </div>
+
+            <button className="ver-todos">
+              Ver todos
+            </button>
+
+          </div>
+
+
+          <div className="vacio">
+
+            <div className="vacio-icono">
+              <ShoppingBag size={30} />
+            </div>
+
+            <h3>No hay pedidos todavía</h3>
+
+            <p>
+              Cuando recibas tu primer pedido aparecerá aquí.
+            </p>
+
+            <button
+              className="crear"
+              onClick={onNuevoPedido}
+            >
+              <Plus size={18} />
+              Crear pedido
+            </button>
+
+          </div>
+
+        </div>
+
+
+        <div className="panel">
+
+          <div className="panel-header">
+
+            <div>
+              <h2>Categorías</h2>
+              <p>Productos disponibles</p>
+            </div>
+
+          </div>
+
+
+          <div className="categorias">
+
+            {categorias.map((categoria) => (
+              <div
+                className="categoria"
+                key={categoria.id}
+              >
+
+                <div className="categoria-icono">
+                  <Package size={20} />
+                </div>
+
+                <div>
+                  <strong>
+                    {categoria.nombre}
+                  </strong>
+
+                  <span>
+                    {categoria.descripcion}
+                  </span>
+                </div>
+
+              </div>
+            ))}
+
+          </div>
+
+        </div>
+
+      </section>
+    </>
+  )
+}
+
+
+/* ============================================================
+   PRODUCTOS
+   ============================================================ */
+
+function Productos({
+  productos,
+  busqueda,
+  setBusqueda,
+  cargando,
+  onAbrirProducto
+}) {
+
+  return (
+    <>
+      <header className="topbar">
+
+        <div>
+          <h1>Productos</h1>
+
+          <p>
+            Administrá los productos disponibles para tus pedidos.
+          </p>
+        </div>
+
+        <button className="nuevo-pedido">
+          <Plus size={19} />
+          Nuevo producto
+        </button>
+
+      </header>
+
+
+      <div className="productos-toolbar">
+
+        <div className="buscador">
+          <Search size={18} />
+
+          <input
+            type="text"
+            placeholder="Buscar producto..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </div>
+
+        <span className="cantidad-productos">
+          {productos.length} productos
+        </span>
+
+      </div>
+
+
+      <div className="productos-grid">
+
+        {cargando && (
+          <div className="cargando">
+            Cargando productos...
+          </div>
+        )}
+
+
+        {!cargando &&
+          productos.map((producto) => (
+
+            <div
+              className="producto-card"
+              key={producto.id}
+              onClick={() => onAbrirProducto(producto)}
+              style={{ cursor: 'pointer' }}
+            >
+
+              <div className="producto-imagen">
+
+                {producto.imagen_principal ? (
+                  <img
+                    src={producto.imagen_principal}
+                    alt={producto.nombre}
+                  />
+                ) : (
+                  <Package size={42} />
+                )}
+
+              </div>
+
+
+              <div className="producto-info">
+
+                <span className="producto-categoria">
+                  {producto.categorias?.nombre || 'Sin categoría'}
+                </span>
+
+                <h3>
+                  {producto.nombre}
+                </h3>
+
+                <p>
+                  {producto.descripcion || 'Sin descripción'}
+                </p>
+
+                <div className="producto-footer">
+
+                  <span className="producto-codigo">
+                    {producto.codigo_interno || 'Sin código'}
+                  </span>
+
+                  <ChevronRight size={18} />
+
+                </div>
+
+              </div>
+
+            </div>
+
+          ))}
+
+
+        {!cargando && productos.length === 0 && (
+
+          <div className="sin-productos">
+
+            <Package size={42} />
+
+            <h3>No encontramos productos</h3>
+
+            <p>
+              Probá con otro término de búsqueda.
+            </p>
+
+          </div>
+
+        )}
+
+      </div>
+    </>
+  )
+}
+
+
+/* ============================================================
+   DETALLE DEL PRODUCTO
+   ============================================================ */
+
+function ProductoDetalle({ producto, volver }) {
+
+  const [variantes, setVariantes] = useState([])
+  const [personalizaciones, setPersonalizaciones] = useState([])
+  const [preguntas, setPreguntas] = useState([])
+  const [tiposPersonalizacion, setTiposPersonalizacion] = useState([])
+
+  const [mostrarVariante, setMostrarVariante] = useState(false)
+  const [mostrarPersonalizacion, setMostrarPersonalizacion] = useState(false)
+  const [mostrarPregunta, setMostrarPregunta] = useState(false)
+
+  const [editandoVariante, setEditandoVariante] = useState(null)
+
+  useEffect(() => {
+    cargarTodo()
+  }, [producto.id])
+
+  async function cargarTodo() {
+    await Promise.all([
+      cargarVariantes(),
+      cargarPersonalizaciones(),
+      cargarPreguntas(),
+      cargarTiposPersonalizacion()
+    ])
+  }
+
+
+  async function cargarVariantes() {
+
+    const { data, error } = await supabase
+      .from('producto_variantes')
+      .select('*')
+      .eq('producto_id', producto.id)
+      .eq('activo', true)
+      .order('id')
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setVariantes(data || [])
+  }
+
+
+  async function cargarTiposPersonalizacion() {
+
+    const { data, error } = await supabase
+      .from('tipos_personalizacion')
+      .select('*')
+      .eq('activo', true)
+      .order('id')
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setTiposPersonalizacion(data || [])
+  }
+
+
+  async function cargarPersonalizaciones() {
+
+    const { data, error } = await supabase
+      .from('producto_personalizaciones')
+      .select(`
+        *,
+        tipos_personalizacion (
+          nombre,
+          descripcion
+        )
+      `)
+      .eq('producto_id', producto.id)
+      .eq('activo', true)
+      .order('id')
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setPersonalizaciones(data || [])
+  }
+
+
+  async function cargarPreguntas() {
+
+    const { data, error } = await supabase
+      .from('producto_preguntas')
+      .select(`
+        *,
+        preguntas (
+          id,
+          titulo,
+          descripcion,
+          tipo_respuesta,
+          placeholder,
+          permite_archivo,
+          permite_multiple,
+          activo
+        )
+      `)
+      .eq('producto_id', producto.id)
+      .eq('activo', true)
+      .order('orden')
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    setPreguntas(data || [])
+  }
+
+
+  async function eliminarVariante(id) {
+
+    const confirmar = window.confirm(
+      '¿Seguro que querés eliminar esta variante?'
+    )
+
+    if (!confirmar) return
+
+    const { error } = await supabase
+      .from('producto_variantes')
+      .update({ activo: false })
+      .eq('id', id)
+
+    if (error) {
+      alert('No se pudo eliminar la variante.')
+      console.error(error)
+      return
+    }
+
+    cargarVariantes()
+  }
+
+
+  async function eliminarPersonalizacion(id) {
+
+    const confirmar = window.confirm(
+      '¿Eliminar esta personalización?'
+    )
+
+    if (!confirmar) return
+
+    const { error } = await supabase
+      .from('producto_personalizaciones')
+      .update({ activo: false })
+      .eq('id', id)
+
+    if (error) {
+      alert('No se pudo eliminar.')
+      return
+    }
+
+    cargarPersonalizaciones()
+  }
+
+
+  async function eliminarPregunta(id) {
+
+    const confirmar = window.confirm(
+      '¿Eliminar esta pregunta?'
+    )
+
+    if (!confirmar) return
+
+    const { error } = await supabase
+      .from('producto_preguntas')
+      .update({ activo: false })
+      .eq('id', id)
+
+    if (error) {
+      alert('No se pudo eliminar.')
+      return
+    }
+
+    cargarPreguntas()
+  }
+
+
+  return (
+    <>
+      <header className="topbar">
+
+        <div>
+
+          <button
+            className="boton-volver"
+            onClick={volver}
+          >
+            <ArrowLeft size={18} />
+            Volver a productos
+          </button>
+
+          <h1>{producto.nombre}</h1>
+
+          <p>
+            Configuración completa del producto.
+          </p>
+
+        </div>
+
+      </header>
+
+
+      <section className="detalle-producto">
+
+        <div className="detalle-imagen">
+
+          {producto.imagen_principal ? (
+            <img
+              src={producto.imagen_principal}
+              alt={producto.nombre}
+            />
+          ) : (
+            <Package size={70} />
+          )}
+
+        </div>
+
+
+        <div className="detalle-informacion">
+
+          <span className="producto-categoria">
+            {producto.categorias?.nombre || 'Sin categoría'}
+          </span>
+
+          <h2>
+            {producto.nombre}
+          </h2>
+
+          <p className="detalle-descripcion">
+            {producto.descripcion || 'Sin descripción'}
+          </p>
+
+
+          <div className="detalle-datos">
+
+            <div>
+              <span>Código interno</span>
+              <strong>
+                {producto.codigo_interno || 'Sin código'}
+              </strong>
+            </div>
+
+            <div>
+              <span>Precio</span>
+              <strong>
+                {producto.precio
+                  ? `$ ${producto.precio}`
+                  : 'Sin precio'}
+              </strong>
+            </div>
+
+            <div>
+              <span>Estado</span>
+              <strong>
+                {producto.activo ? 'Activo' : 'Inactivo'}
+              </strong>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+      {/* ======================================================
+          VARIANTES
+          ====================================================== */}
+
+      <section className="panel detalle-panel">
+
+        <div className="panel-header">
+
+          <div>
+            <h2>Variantes</h2>
+
+            <p>
+              Presentaciones, colores, talles y modelos.
+            </p>
+          </div>
+
+          <button
+            className="boton-secundario"
+            onClick={() => {
+              setEditandoVariante(null)
+              setMostrarVariante(true)
+            }}
+          >
+            <Plus size={17} />
+            Agregar variante
+          </button>
+
+        </div>
+
+
+        {variantes.length === 0 ? (
+
+          <div className="seccion-vacia">
+
+            <Package size={30} />
+
+            <span>
+              Todavía no hay variantes configuradas.
+            </span>
+
+          </div>
+
+        ) : (
+
+          <div className="tabla">
+
+            <div className="tabla-cabeza">
+
+              <span>Nombre</span>
+              <span>SKU</span>
+              <span>Color</span>
+              <span>Capacidad</span>
+              <span>Precio</span>
+              <span>Stock</span>
+              <span></span>
+
+            </div>
+
+
+            {variantes.map((variante) => (
+
+              <div
+                className="tabla-fila"
+                key={variante.id}
+              >
+
+                <strong>
+                  {variante.nombre}
+                </strong>
+
+                <span>
+                  {variante.sku || '-'}
+                </span>
+
+                <span>
+                  {variante.color || '-'}
+                </span>
+
+                <span>
+                  {variante.capacidad || '-'}
+                </span>
+
+                <span>
+                  {variante.precio
+                    ? `$ ${variante.precio}`
+                    : '-'}
+                </span>
+
+                <span>
+                  {variante.stock ?? '-'}
+                </span>
+
+                <div className="acciones">
+
+                  <button
+                    onClick={() => {
+                      setEditandoVariante(variante)
+                      setMostrarVariante(true)
+                    }}
+                    title="Editar"
+                  >
+                    <Pencil size={16} />
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      eliminarVariante(variante.id)
+                    }
+                    title="Eliminar"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+
+                </div>
+
+              </div>
+
+            ))}
+
+          </div>
+
+        )}
+
+      </section>
+
+
+      {/* ======================================================
+          PERSONALIZACIONES
+          ====================================================== */}
+
+      <section className="panel detalle-panel">
+
+        <div className="panel-header">
+
+          <div>
+
+            <h2>Personalizaciones</h2>
+
+            <p>
+              Qué tipos de personalización admite este producto.
+            </p>
+
+          </div>
+
+          <button
+            className="boton-secundario"
+            onClick={() => setMostrarPersonalizacion(true)}
+          >
+            <Plus size={17} />
+            Agregar
+          </button>
+
+        </div>
+
+
+        {personalizaciones.length === 0 ? (
+
+          <div className="seccion-vacia">
+
+            <Palette size={30} />
+
+            <span>
+              Todavía no hay personalizaciones configuradas.
+            </span>
+
+          </div>
+
+        ) : (
+
+          <div className="lista-configuracion">
+
+            {personalizaciones.map((item) => (
+
+              <div
+                className="configuracion-item"
+                key={item.id}
+              >
+
+                <div className="configuracion-icono">
+                  <Palette size={20} />
+                </div>
+
+                <div>
+
+                  <strong>
+                    {item.tipos_personalizacion?.nombre}
+                  </strong>
+
+                  <span>
+                    {item.tipos_personalizacion?.descripcion}
+                  </span>
+
+                </div>
+
+                <button
+                  onClick={() =>
+                    eliminarPersonalizacion(item.id)
+                  }
+                >
+                  <Trash2 size={17} />
+                </button>
+
+              </div>
+
+            ))}
+
+          </div>
+
+        )}
+
+      </section>
+
+
+      {/* ======================================================
+          PREGUNTAS
+          ====================================================== */}
+
+      <section className="panel detalle-panel">
+
+        <div className="panel-header">
+
+          <div>
+
+            <h2>Preguntas del cliente</h2>
+
+            <p>
+              Información que necesitaremos para realizar el pedido.
+            </p>
+
+          </div>
+
+          <button
+            className="boton-secundario"
+            onClick={() => setMostrarPregunta(true)}
+          >
+            <Plus size={17} />
+            Agregar pregunta
+          </button>
+
+        </div>
+
+
+        {preguntas.length === 0 ? (
+
+          <div className="seccion-vacia">
+
+            <ClipboardList size={30} />
+
+            <span>
+              Todavía no hay preguntas configuradas.
+            </span>
+
+          </div>
+
+        ) : (
+
+          <div className="lista-configuracion">
+
+            {preguntas.map((item) => (
+
+              <div
+                className="configuracion-item pregunta-item"
+                key={item.id}
+              >
+
+                <div className="configuracion-icono">
+                  <ClipboardList size={20} />
+                </div>
+
+                <div className="pregunta-contenido">
+
+                  <strong>
+                    {item.preguntas?.titulo}
+                  </strong>
+
+                  <span>
+                    Tipo: {item.preguntas?.tipo_respuesta}
+                  </span>
+
+                  <div className="etiquetas">
+
+                    {item.obligatoria && (
+                      <small>Obligatoria</small>
+                    )}
+
+                    {item.preguntas?.permite_archivo && (
+                      <small>Permite archivo</small>
+                    )}
+
+                    {item.preguntas?.permite_multiple && (
+                      <small>Múltiple</small>
+                    )}
+
+                  </div>
+
+                </div>
+
+                <button
+                  onClick={() =>
+                    eliminarPregunta(item.id)
+                  }
+                >
+                  <Trash2 size={17} />
+                </button>
+
+              </div>
+
+            ))}
+
+          </div>
+
+        )}
+
+      </section>
+
+
+      {/* ======================================================
+          MODALES
+          ====================================================== */}
+
+      {mostrarVariante && (
+
+        <Modal
+          titulo={
+            editandoVariante
+              ? 'Editar variante'
+              : 'Nueva variante'
+          }
+          cerrar={() => {
+            setMostrarVariante(false)
+            setEditandoVariante(null)
+          }}
+        >
+
+          <FormularioVariante
+            productoId={producto.id}
+            variante={editandoVariante}
+            guardar={() => {
+              setMostrarVariante(false)
+              setEditandoVariante(null)
+              cargarVariantes()
+            }}
+            cancelar={() => {
+              setMostrarVariante(false)
+              setEditandoVariante(null)
+            }}
+          />
+
+        </Modal>
+
+      )}
+
+
+      {mostrarPersonalizacion && (
+
+        <Modal
+          titulo="Agregar personalización"
+          cerrar={() => setMostrarPersonalizacion(false)}
+        >
+
+          <FormularioPersonalizacion
+            productoId={producto.id}
+            tipos={tiposPersonalizacion}
+            guardar={() => {
+              setMostrarPersonalizacion(false)
+              cargarPersonalizaciones()
+            }}
+            cancelar={() =>
+              setMostrarPersonalizacion(false)
+            }
+          />
+
+        </Modal>
+
+      )}
+
+
+      {mostrarPregunta && (
+
+        <Modal
+          titulo="Nueva pregunta"
+          cerrar={() => setMostrarPregunta(false)}
+        >
+
+          <FormularioPregunta
+            productoId={producto.id}
+            guardar={() => {
+              setMostrarPregunta(false)
+              cargarPreguntas()
+            }}
+            cancelar={() =>
+              setMostrarPregunta(false)
+            }
+          />
+
+        </Modal>
+
+      )}
+
+    </>
+  )
+}
+
+
+/* ============================================================
+   FORMULARIO VARIANTE
+   ============================================================ */
+
+function FormularioVariante({
+  productoId,
+  variante,
+  guardar,
+  cancelar
+}) {
+
+  const [form, setForm] = useState({
+    nombre: variante?.nombre || '',
+    sku: variante?.sku || '',
+    color: variante?.color || '',
+    talle: variante?.talle || '',
+    modelo: variante?.modelo || '',
+    capacidad: variante?.capacidad || '',
+    precio: variante?.precio || '',
+    stock: variante?.stock || ''
+  })
+
+  const [guardando, setGuardando] = useState(false)
+
+
+  function cambiar(campo, valor) {
+    setForm({
+      ...form,
+      [campo]: valor
+    })
+  }
+
+
+  async function enviar(e) {
+
+    e.preventDefault()
+
+    if (!form.nombre.trim()) {
+      alert('El nombre de la variante es obligatorio.')
+      return
+    }
+
+    setGuardando(true)
+
+    const datos = {
+      producto_id: productoId,
+      nombre: form.nombre,
+      sku: form.sku || null,
+      color: form.color || null,
+      talle: form.talle || null,
+      modelo: form.modelo || null,
+      capacidad: form.capacidad || null,
+      precio: form.precio === '' ? null : Number(form.precio),
+      stock: form.stock === '' ? null : Number(form.stock),
+      activo: true
+    }
+
+
+    let error
+
+
+    if (variante) {
+
+      const respuesta = await supabase
+        .from('producto_variantes')
+        .update(datos)
+        .eq('id', variante.id)
+
+      error = respuesta.error
+
+    } else {
+
+      const respuesta = await supabase
+        .from('producto_variantes')
+        .insert(datos)
+
+      error = respuesta.error
+
+    }
+
+
+    setGuardando(false)
+
+
+    if (error) {
+
+      console.error(error)
+
+      alert(
+        'No se pudo guardar la variante. Revisá la consola.'
+      )
+
+      return
+
+    }
+
+
+    guardar()
+
+  }
+
+
+  return (
+
+    <form
+      className="formulario"
+      onSubmit={enviar}
+    >
+
+      <Campo
+        label="Nombre *"
+        value={form.nombre}
+        onChange={(v) => cambiar('nombre', v)}
+        placeholder="Ej: Taza blanca 11 oz"
+      />
+
+      <Campo
+        label="SKU"
+        value={form.sku}
+        onChange={(v) => cambiar('sku', v)}
+        placeholder="Ej: TAZ-001-B"
+      />
+
+
+      <div className="form-grid">
+
+        <Campo
+          label="Color"
+          value={form.color}
+          onChange={(v) => cambiar('color', v)}
+          placeholder="Ej: Blanco"
+        />
+
+        <Campo
+          label="Talle"
+          value={form.talle}
+          onChange={(v) => cambiar('talle', v)}
+          placeholder="Ej: M"
+        />
+
+      </div>
+
+
+      <div className="form-grid">
+
+        <Campo
+          label="Modelo"
+          value={form.modelo}
+          onChange={(v) => cambiar('modelo', v)}
+          placeholder="Ej: Clásica"
+        />
+
+        <Campo
+          label="Capacidad"
+          value={form.capacidad}
+          onChange={(v) => cambiar('capacidad', v)}
+          placeholder="Ej: 11 oz"
+        />
+
+      </div>
+
+
+      <div className="form-grid">
+
+        <Campo
+          label="Precio"
+          type="number"
+          value={form.precio}
+          onChange={(v) => cambiar('precio', v)}
+          placeholder="0"
+        />
+
+        <Campo
+          label="Stock"
+          type="number"
+          value={form.stock}
+          onChange={(v) => cambiar('stock', v)}
+          placeholder="0"
+        />
+
+      </div>
+
+
+      <div className="modal-botones">
+
+        <button
+          type="button"
+          className="boton-cancelar"
+          onClick={cancelar}
+        >
+          Cancelar
+        </button>
+
+        <button
+          type="submit"
+          className="boton-guardar"
+          disabled={guardando}
+        >
+          <Save size={17} />
+
+          {guardando
+            ? 'Guardando...'
+            : 'Guardar variante'}
+
+        </button>
+
+      </div>
+
+    </form>
+
+  )
+}
+
+
+/* ============================================================
+   FORMULARIO PERSONALIZACIÓN
+   ============================================================ */
+
+function FormularioPersonalizacion({
+  productoId,
+  tipos,
+  guardar,
+  cancelar
+}) {
+
+  const [tipoId, setTipoId] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+
+  async function enviar(e) {
+
+    e.preventDefault()
+
+    if (!tipoId) {
+      alert('Seleccioná un tipo de personalización.')
+      return
+    }
+
+    setGuardando(true)
+
+
+    const { error } = await supabase
+      .from('producto_personalizaciones')
+      .insert({
+        producto_id: productoId,
+        tipo_personalizacion_id: Number(tipoId),
+        activo: true
+      })
+
+
+    setGuardando(false)
+
+
+    if (error) {
+
+      if (error.code === '23505') {
+        alert(
+          'Esta personalización ya está agregada al producto.'
+        )
+      } else {
+        console.error(error)
+        alert('No se pudo guardar.')
+      }
+
+      return
+    }
+
+
+    guardar()
+
+  }
+
+
+  return (
+
+    <form
+      className="formulario"
+      onSubmit={enviar}
+    >
+
+      <label>
+
+        <span>
+          Tipo de personalización
+        </span>
+
+        <select
+          value={tipoId}
+          onChange={(e) => setTipoId(e.target.value)}
+        >
+
+          <option value="">
+            Seleccionar...
+          </option>
+
+          {tipos.map((tipo) => (
+
+            <option
+              key={tipo.id}
+              value={tipo.id}
+            >
+              {tipo.nombre}
+            </option>
+
+          ))}
+
+        </select>
+
+      </label>
+
+
+      <div className="modal-botones">
+
+        <button
+          type="button"
+          className="boton-cancelar"
+          onClick={cancelar}
+        >
+          Cancelar
+        </button>
+
+        <button
+          type="submit"
+          className="boton-guardar"
+          disabled={guardando}
+        >
+          <Save size={17} />
+
+          {guardando
+            ? 'Guardando...'
+            : 'Agregar'}
+
+        </button>
+
+      </div>
+
+    </form>
+
+  )
+}
+
+
+/* ============================================================
+   FORMULARIO PREGUNTA
+   ============================================================ */
+
+function FormularioPregunta({
+  productoId,
+  guardar,
+  cancelar
+}) {
+
+  const [form, setForm] = useState({
+    titulo: '',
+    descripcion: '',
+    tipo_respuesta: 'texto',
+    placeholder: '',
+    permite_archivo: false,
+    permite_multiple: false,
+    obligatoria: false,
+    orden: 0
+  })
+
+  const [guardando, setGuardando] = useState(false)
+
+
+  function cambiar(campo, valor) {
+
+    setForm({
+      ...form,
+      [campo]: valor
+    })
+
+  }
+
+
+  async function enviar(e) {
+
+    e.preventDefault()
+
+
+    if (!form.titulo.trim()) {
+
+      alert('Escribí la pregunta.')
+
+      return
+
+    }
+
+
+    setGuardando(true)
+
+
+    const { data: pregunta, error: errorPregunta } =
+      await supabase
+        .from('preguntas')
+        .insert({
+          titulo: form.titulo,
+          descripcion: form.descripcion || null,
+          tipo_respuesta: form.tipo_respuesta,
+          placeholder: form.placeholder || null,
+          permite_archivo: form.permite_archivo,
+          permite_multiple: form.permite_multiple,
+          activo: true
+        })
+        .select()
+        .single()
+
+
+    if (errorPregunta) {
+
+      console.error(errorPregunta)
+
+      alert('No se pudo crear la pregunta.')
+
+      setGuardando(false)
+
+      return
+
+    }
+
+
+    const { error: errorRelacion } =
+      await supabase
+        .from('producto_preguntas')
+        .insert({
+          producto_id: productoId,
+          pregunta_id: pregunta.id,
+          orden: Number(form.orden) || 0,
+          obligatoria: form.obligatoria,
+          activo: true
+        })
+
+
+    if (errorRelacion) {
+
+      console.error(errorRelacion)
+
+      alert(
+        'La pregunta se creó, pero no se pudo asociar al producto.'
+      )
+
+      setGuardando(false)
+
+      return
+
+    }
+
+
+    setGuardando(false)
+
+    guardar()
+
+  }
+
+
+  return (
+
+    <form
+      className="formulario"
+      onSubmit={enviar}
+    >
+
+      <Campo
+        label="Pregunta *"
+        value={form.titulo}
+        onChange={(v) => cambiar('titulo', v)}
+        placeholder="Ej: ¿Qué nombre querés colocar?"
+      />
+
+
+      <Campo
+        label="Descripción"
+        value={form.descripcion}
+        onChange={(v) => cambiar('descripcion', v)}
+        placeholder="Información adicional para el cliente"
+      />
+
+
+      <label>
+
+        <span>
+          Tipo de respuesta
+        </span>
+
+        <select
+          value={form.tipo_respuesta}
+          onChange={(e) =>
+            cambiar('tipo_respuesta', e.target.value)
+          }
+        >
+
+          <option value="texto">
+            Texto
+          </option>
+
+          <option value="numero">
+            Número
+          </option>
+
+          <option value="booleano">
+            Sí / No
+          </option>
+
+          <option value="opcion">
+            Selección
+          </option>
+
+        </select>
+
+      </label>
+
+
+      <Campo
+        label="Texto de ayuda"
+        value={form.placeholder}
+        onChange={(v) => cambiar('placeholder', v)}
+        placeholder="Ej: Escribí el nombre"
+      />
+
+
+      <Campo
+        label="Orden"
+        type="number"
+        value={form.orden}
+        onChange={(v) => cambiar('orden', v)}
+        placeholder="0"
+      />
+
+
+      <div className="checks">
+
+        <label className="check">
+
+          <input
+            type="checkbox"
+            checked={form.obligatoria}
+            onChange={(e) =>
+              cambiar('obligatoria', e.target.checked)
+            }
+          />
+
+          <span>
+            Pregunta obligatoria
+          </span>
+
+        </label>
+
+
+        <label className="check">
+
+          <input
+            type="checkbox"
+            checked={form.permite_archivo}
+            onChange={(e) =>
+              cambiar(
+                'permite_archivo',
+                e.target.checked
+              )
+            }
+          />
+
+          <span>
+            Permitir archivo
+          </span>
+
+        </label>
+
+
+        <label className="check">
+
+          <input
+            type="checkbox"
+            checked={form.permite_multiple}
+            onChange={(e) =>
+              cambiar(
+                'permite_multiple',
+                e.target.checked
+              )
+            }
+          />
+
+          <span>
+            Permitir múltiples respuestas
+          </span>
+
+        </label>
+
+      </div>
+
+
+      <div className="modal-botones">
+
+        <button
+          type="button"
+          className="boton-cancelar"
+          onClick={cancelar}
+        >
+          Cancelar
+        </button>
+
+        <button
+          type="submit"
+          className="boton-guardar"
+          disabled={guardando}
+        >
+          <Save size={17} />
+
+          {guardando
+            ? 'Guardando...'
+            : 'Crear pregunta'}
+
+        </button>
+
+      </div>
+
+    </form>
+
+  )
+}
+
+
+/* ============================================================
+   COMPONENTES AUXILIARES
+   ============================================================ */
+
+function Campo({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text'
+}) {
+
+  return (
+
+    <label>
+
+      <span>{label}</span>
+
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+
+    </label>
+
+  )
+}
+
+
+function Modal({ titulo, cerrar, children }) {
+
+  return (
+
+    <div className="modal-fondo">
+
+      <div className="modal">
+
+        <div className="modal-header">
+
+          <h2>{titulo}</h2>
+
+          <button
+            className="modal-cerrar"
+            onClick={cerrar}
+          >
+            <X size={20} />
+          </button>
+
+        </div>
+
+        {children}
+
+      </div>
+
+    </div>
+
+  )
+}
+
+
+export default App

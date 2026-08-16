@@ -1,0 +1,299 @@
+import { useEffect, useState } from 'react'
+import { supabase } from './lib/supabase'
+
+export default function Auth({ onAuthenticated }) {
+  const [modo, setModo] = useState('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [nombre, setNombre] = useState('')
+  const [cargando, setCargando] = useState(false)
+  const [error, setError] = useState('')
+  const [mensaje, setMensaje] = useState('')
+
+  useEffect(() => {
+    verificarSesion()
+  }, [])
+
+  async function verificarSesion() {
+    const { data } = await supabase.auth.getSession()
+
+    if (data.session) {
+      cargarUsuario(data.session.user)
+    }
+  }
+
+  async function cargarUsuario(authUser) {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select(`
+        *,
+        roles (
+          nombre
+        )
+      `)
+      .eq('auth_user_id', authUser.id)
+      .maybeSingle()
+
+    if (error) {
+      console.error(error)
+      setError('No se pudo cargar el usuario.')
+      return
+    }
+
+    if (!data) {
+      setError(
+        'La cuenta existe, pero todavía no está vinculada al sistema.'
+      )
+      return
+    }
+
+    onAuthenticated({
+      authUser,
+      usuario: data
+    })
+  }
+
+  async function iniciarSesion(e) {
+    e.preventDefault()
+
+    setCargando(true)
+    setError('')
+    setMensaje('')
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
+
+    if (error) {
+      setError(error.message)
+      setCargando(false)
+      return
+    }
+
+    await cargarUsuario(data.user)
+
+    setCargando(false)
+  }
+
+  async function registrarse(e) {
+    e.preventDefault()
+
+    setCargando(true)
+    setError('')
+    setMensaje('')
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password
+    })
+
+    if (error) {
+      setError(error.message)
+      setCargando(false)
+      return
+    }
+
+    if (!data.user) {
+      setError('No se pudo crear la cuenta.')
+      setCargando(false)
+      return
+    }
+
+    const { data: cliente, error: errorCliente } = await supabase
+      .from('clientes')
+      .insert({
+        nombre
+      })
+      .select()
+      .single()
+
+    if (errorCliente) {
+      console.error(errorCliente)
+      setError('La cuenta se creó, pero no se pudo crear el cliente.')
+      setCargando(false)
+      return
+    }
+
+    const { data: rol, error: errorRol } = await supabase
+      .from('roles')
+      .select('id')
+      .eq('nombre', 'Atención')
+      .maybeSingle()
+
+    if (errorRol || !rol) {
+      setError('No se encontró la configuración de roles.')
+      setCargando(false)
+      return
+    }
+
+    const { error: errorUsuario } = await supabase
+      .from('usuarios')
+      .insert({
+        nombre,
+        email,
+        auth_user_id: data.user.id,
+        rol_id: rol.id,
+        tipo_cliente: 'minorista'
+      })
+
+    if (errorUsuario) {
+      console.error(errorUsuario)
+
+      await supabase
+        .from('clientes')
+        .delete()
+        .eq('id', cliente.id)
+
+      setError('La cuenta se creó, pero no se pudo crear el usuario.')
+      setCargando(false)
+      return
+    }
+
+    setMensaje(
+      'Cuenta creada correctamente. Ya podés iniciar sesión.'
+    )
+
+    setModo('login')
+    setCargando(false)
+  }
+
+  return (
+    <div className="auth-container">
+      <div className="auth-card">
+
+        <div className="auth-logo">
+          <h1>Sistema de Pedidos</h1>
+          <p>Pedidos personalizados</p>
+        </div>
+
+        {modo === 'login' ? (
+          <form onSubmit={iniciarSesion}>
+
+            <h2>Iniciar sesión</h2>
+
+            {error && (
+              <div className="auth-error">
+                {error}
+              </div>
+            )}
+
+            {mensaje && (
+              <div className="auth-success">
+                {mensaje}
+              </div>
+            )}
+
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@email.com"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Contraseña</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={cargando}
+            >
+              {cargando ? 'Ingresando...' : 'Iniciar sesión'}
+            </button>
+
+            <button
+              type="button"
+              className="auth-secondary"
+              onClick={() => {
+                setModo('registro')
+                setError('')
+                setMensaje('')
+              }}
+            >
+              Crear una cuenta
+            </button>
+
+          </form>
+        ) : (
+          <form onSubmit={registrarse}>
+
+            <h2>Crear cuenta</h2>
+
+            {error && (
+              <div className="auth-error">
+                {error}
+              </div>
+            )}
+
+            <label>
+              <span>Nombre</span>
+              <input
+                type="text"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Tu nombre"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@email.com"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Contraseña</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo 6 caracteres"
+                minLength={6}
+                required
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={cargando}
+            >
+              {cargando ? 'Creando cuenta...' : 'Crear cuenta'}
+            </button>
+
+            <button
+              type="button"
+              className="auth-secondary"
+              onClick={() => {
+                setModo('login')
+                setError('')
+                setMensaje('')
+              }}
+            >
+              Ya tengo una cuenta
+            </button>
+
+          </form>
+        )}
+
+      </div>
+    </div>
+  )
+}

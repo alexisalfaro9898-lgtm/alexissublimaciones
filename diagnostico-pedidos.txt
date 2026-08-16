@@ -1,0 +1,209 @@
+============================================================
+DIAGNÓSTICO COMPLETO DEL FLUJO DE PEDIDOS
+Proyecto: sistema-pedidos
+Fecha: 2026-08-15
+============================================================
+
+Estructura REAL confirmada de `pedido_detalles` (Supabase):
+  id bigint NOT NULL
+  pedido_id bigint NOT NULL
+  producto_id bigint NOT NULL
+  producto_nombre text NOT NULL
+  codigo_interno text NULL
+  cantidad integer NOT NULL
+  precio_unitario numeric NOT NULL
+  subtotal numeric NOT NULL
+  detalle text NULL
+  creado_en timestamptz NOT NULL
+
+IMPORTANTE: NO existe la columna nombre_producto en la base de datos.
+
+============================================================
+PROBLEMA 1 (BLOQUEANTE) — El INSERT en `pedido_detalles`
+envía 4 columnas que NO existen
+============================================================
+- Problema:      El INSERT falla con PGRST204 (columna inexistente).
+- Archivo:       src/App.jsx
+- Líneas:        1437-1451 (dentro de `guardarPedido()`)
+- Código afectado:
+    .insert({
+      pedido_id: pedido.id,
+      producto_id: productoIdSeguro,
+      variante_id: item.variante?.id ?? item.variante_id ?? null,   // ← 1442
+      cantidad: item.cantidad,
+      nombre_producto: item.producto.nombre,                        // ← 1444
+      nombre_variante: item.variante?.nombre ?? item.nombre_variante ?? null, // ← 1445
+      precio_unitario: precio,
+      subtotal: precio * item.cantidad,
+      observaciones: item.detalle?.trim() || null                   // ← 1448
+    })
+- Estructura esperada de Supabase (real):
+    `producto_nombre` existe.
+    `variante_id`, `nombre_variante`, `nombre_producto` y `observaciones`
+    NO existen. El texto del detalle se llama `detalle`.
+- Causa:          El código fue escrito contra un esquema imaginado/distinto.
+                  PostgREST rechaza el INSERT completo con:
+                  "PGRST204: Could not find the 'variante_id' column of
+                  'pedido_detalles' in the schema cache."
+- Solución recomendada:
+    * variante_id      → ELIMINAR (no hay columna de variantes)
+    * nombre_variante  → ELIMINAR
+    * nombre_producto  → RENOMBRAR a `producto_nombre`
+    * observaciones    → RENOMBRAR a `detalle`
+- Riesgo:         ALTO — sin este cambio NINGÚN pedido se puede guardar
+                  (falla en el primer detalle).
+
+============================================================
+PROBLEMA 2 (BLOQUEANTE) — El renderizado lee
+`detalle.nombre_producto`, que nunca existirá
+============================================================
+- Problema:      El nombre del producto no se muestra en el detalle del pedido.
+- Archivo:       src/App.jsx
+- Línea:         2605 (componente `PedidoDetalle`)
+- Código afectado:
+    {detalle.nombre_producto}
+- Estructura esperada:
+    El SELECT * de `pedido_detalles` (línea 2291) devuelve `producto_nombre`.
+- Causa:          Mismatch de nombre de columna (mismo problema del punto 1,
+                  del lado de lectura).
+- Solución recomendada:
+    Cambiar a:  {detalle.producto_nombre}
+- Riesgo:         ALTO — el nombre del producto no se vería en la pantalla
+                  de detalle del pedido.
+
+============================================================
+PROBLEMA 3 — Pedidos huérfanos por falta de transacción
+============================================================
+- Problema:      Si falla un INSERT intermedio, el pedido en `pedidos` ya
+                  quedó creado y queda huérfano (sin detalles).
+- Archivo:       src/App.jsx
+- Líneas:        1368-1588 (`guardarPedido()`)
+- Código afectado:
+    Secuencia INSERT: pedidos → pedido_detalles → pedido_personalizaciones
+    → pedido_archivos (cada uno una request separada, sin rollback).
+- Causa:          No hay transacción ni rollback; falla parcial = datos sucios.
+- Solución recomendada:
+    Al detectar error tras crear el pedido, intentar .delete() del pedido
+    huérfano (o usar una RPC/transacción server-side a futuro).
+- Riesgo:         MEDIO — datos sucios acumulados; hoy con el Problema 1 ya
+                  se están creando pedidos huérfanos.
+
+============================================================
+PROBLEMA 4 — Estructuras sin verificar: `pedidos`,
+`pedido_personalizaciones`, `pedido_archivos`
+============================================================
+- Problema:      No se puede confirmar que los nombres de columnas usados
+                  en el código coincidan con la DB real.
+- Archivo:       src/App.jsx
+- Líneas:
+    * 1402-1410  INSERT en `pedidos`
+    * 1470-1554  INSERT en `pedido_personalizaciones`
+    * 1529-1540  INSERT en `pedido_archivos`
+- Columnas que el código asume:
+    * `pedidos`:
+        cliente_nombre, cliente_telefono, cliente_email, estado, subtotal,
+        recargos, total (+ numero_pedido, creado_en usados en lectura)
+    * `pedido_personalizaciones`:
+        pedido_detalle_id, nombre, descripcion, valor_texto,
+        recargo_porcentaje, recargo_fijo, recargo_calculado
+    * `pedido_archivos`:
+        pedido_id, pedido_item_id, nombre_original, ruta_storage,
+        tipo_archivo, extension, tamano_bytes
+- Causa:          No se tiene el esquema real de esas 3 tablas; si algún
+                  nombre difiere, cada INSERT/UPDATE fallará con PGRST204.
+- Solución recomendada:
+    Verificar los 3 esquemas en Supabase contra los nombres listados
+    antes de aplicar cambios.
+- Riesgo:         ALTO hasta confirmar (especialmente `cliente_email`,
+                  `recargos`/`total`, y `pedido_item_id`, que usa
+                  nomenclatura distinta a `pedido_detalle_id`).
+
+============================================================
+PROBLEMA 5 — La imagen nunca se sube a Storage
+============================================================
+- Problema:      La fila en `pedido_archivos` se crea, pero el archivo
+                  no existe en ningún bucket.
+- Archivo:       src/App.jsx
+- Líneas:        1527-1540
+- Código afectado:
+    ruta_storage: item.imagenArchivo.name
+    (solo se guarda el nombre; nunca se hace
+    supabase.storage.from(...).upload(...))
+- Causa:          El INSERT registra el archivo pero el archivo jamás se sube.
+- Solución recomendada:
+    Subir el archivo a un bucket (ej. `pedido-archivos`) y guardar la ruta
+    devuelta por el upload.
+- Riesgo:         MEDIO — la fila existe pero el archivo está roto/inexistente.
+
+============================================================
+PROBLEMA 6 — RLS (verificar)
+============================================================
+- Problema:      Posible bloqueo de todas las operaciones si RLS está
+                  habilitado sin políticas para el rol anónimo.
+- Archivo:       Todo el flujo (el client usa VITE_SUPABASE_PUBLISHABLE_KEY)
+- Causa:          Si RLS está activo sin políticas de insert/select/update,
+                  todo falla con 401/403 (no PGRST204).
+- Solución recomendada:
+    Revisar políticas en Supabase. Si hoy se leen productos correctamente,
+    probablemente RLS esté abierto o deshabilitado.
+- Riesgo:         MEDIO.
+
+============================================================
+PROBLEMA 7 — Schema cache de PostgREST
+============================================================
+- Problema:      PostgREST puede seguir fallando con PGRST204 aunque el
+                  código esté corregido.
+- Causa:          Si las columnas de `pedido_detalles` se renombraron/crearon
+                  recientemente, PostgREST puede tener el esquema cacheado.
+- Solución recomendada:
+    Ejecutar en el SQL editor de Supabase:
+        NOTIFY pgrst, 'reload schema';
+- Riesgo:         BAJO (solo aplica si se modifica el esquema).
+
+============================================================
+PROBLEMAS MENORES / SIN ACCIÓN
+============================================================
+- UPDATE de estado (App.jsx:2375-2383):
+    Correcto (update pedidos set estado). Único UPDATE del flujo.
+    Sin problema salvo RLS.
+- DELETE:
+    No existe NINGÚN .delete() sobre tablas de pedidos en todo el proyecto
+    (solo Productos.jsx:104 sobre `productos`).
+- `pedido_items`:
+    No se referencia en ninguna parte — no aplica.
+- FKs:
+    pedido_detalles.pedido_id → pedidos.id y producto_id → productos.id
+    se envían correctamente con validación previa (línea 1431).
+    No hay FKs rotas por el código.
+- Tipos:
+    cantidad se envía como number (integer OK), precios/recargos como number
+    (numeric OK), cliente_email: null OK. Sin problemas de tipos.
+- `codigo_interno` (nullable):
+    No se envía — correcto.
+- `numero_pedido` (líneas 778, 1056, 2436):
+    Tiene fallback a pedido.id, no rompe nada si no existe la columna.
+- Duplicación:
+    El texto de diseño se guarda 2 veces (en la personalización
+    "Detalle del diseño" y en la columna `detalle`). Opcional deduplicar.
+
+============================================================
+LISTA ORDENADA DE CAMBIOS (pendientes de autorización)
+============================================================
+1. src/App.jsx:1442 — eliminar `variante_id` del INSERT.
+2. src/App.jsx:1444 — renombrar `nombre_producto` → `producto_nombre`.
+3. src/App.jsx:1445 — eliminar `nombre_variante` del INSERT.
+4. src/App.jsx:1448 — renombrar `observaciones` → `detalle`.
+5. src/App.jsx:2605 — renombrar `detalle.nombre_producto` → `detalle.producto_nombre`.
+6. Verificar esquema real de `pedidos`, `pedido_personalizaciones` y
+   `pedido_archivos` (Problema 4).
+7. Corregir nombres de columnas que difieran en esas 3 tablas.
+8. Subir imagen a Storage antes del INSERT en `pedido_archivos` (Problema 5).
+9. Rollback del pedido huérfano si falla algo después del INSERT de
+   `pedidos` (Problema 3).
+10. Verificar RLS (Problema 6) y, si aplica, crear políticas.
+11. Ejecutar `NOTIFY pgrst, 'reload schema';` en Supabase después de
+    cualquier cambio (Problema 7).
+
+============================================================
+FIN DEL REPORTE
+============================================================
