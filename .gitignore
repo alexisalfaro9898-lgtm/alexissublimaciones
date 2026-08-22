@@ -21,6 +21,13 @@ dist-ssr
 supabase/.temp
 ~/.supabase
 
+# Backups y dumps con datos sensibles (solo copia local, NUNCA en el repo)
+backups/
+
+# Copias de trabajo de código (mantener fuera del repo)
+src/*.backup*
+src/*.antes*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

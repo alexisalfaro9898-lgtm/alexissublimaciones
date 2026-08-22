@@ -1,10 +1,10 @@
 /* ============================================================
    PRUEBA E2E FINAL — sistema-pedidos
    Cliente (crear pedido completo) + Admin (gestionar) + Aislamiento
-   Uso:  source .env && node prueba-final.mjs
+   Uso:  source .env && ADMIN_EMAIL=... ADMIN_PASSWORD=... node prueba-final.mjs
    Requiere: SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY,
-             SUPABASE_SECRET_KEY y ADMIN_EMAIL/ADMIN_PASSWORD
-             (o editar las constantes abajo).
+             SUPABASE_SECRET_KEY y ADMIN_EMAIL/ADMIN_PASSWORD.
+             (Credenciales SOLO por entorno, nunca hardcodeadas.)
    Limpia todos los datos que crea. Se puede repetir.
    ============================================================ */
 
@@ -13,8 +13,16 @@ import { createClient } from '@supabase/supabase-js'
 const URL = process.env.SUPABASE_URL
 const ANON = process.env.VITE_SUPABASE_PUBLISHABLE_KEY
 const SERVICE = process.env.SUPABASE_SECRET_KEY
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'alexisalfaro9898@gmail.com'
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  console.error(
+    'Faltan credenciales de admin. Definí ADMIN_EMAIL y ADMIN_PASSWORD ' +
+    'como variables de entorno. Nunca las escribas en este archivo.'
+  )
+  process.exit(1)
+}
 
 const admin = createClient(URL, SERVICE)
 const anonClient = createClient(URL, ANON)

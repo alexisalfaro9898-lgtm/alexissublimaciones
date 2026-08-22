@@ -38,6 +38,13 @@ export const PERIODOS = [
   { valor: 'personalizado', nombre: 'Período personalizado' }
 ]
 
+export const ORIGENES = [
+  { valor: null, nombre: 'Todos los canales' },
+  { valor: 'web', nombre: '🌐 Web' },
+  { valor: 'whatsapp', nombre: '💬 WhatsApp' },
+  { valor: 'admin', nombre: '👤 Admin' }
+]
+
 export async function cargarEstadosPedido() {
   const { data, error } = await supabase
     .from('estados_pedido')
@@ -128,7 +135,8 @@ export async function cargarResumen(filtros) {
     p_categoria_id: filtros.categoriaId || null,
     p_producto_id: filtros.productoId || null,
     p_cliente: filtros.cliente || null,
-    p_estado: filtros.estado || null
+    p_estado: filtros.estado || null,
+    p_origen: filtros.origen || null
   })
 
   if (error) throw error
@@ -193,7 +201,8 @@ export async function cargarEvolucion(filtros, agrupacion = 'dia') {
     p_hasta: hasta.toISOString(),
     p_agrupacion: agrupacion,
     p_categoria_id: filtros.categoriaId || null,
-    p_producto_id: filtros.productoId || null
+    p_producto_id: filtros.productoId || null,
+    p_origen: filtros.origen || null
   })
 
   if (error) throw error
@@ -223,7 +232,8 @@ export async function cargarTop(tipo, filtros, limite = 30) {
     p_hasta: hasta.toISOString(),
     p_limite: limite,
     p_categoria_id: filtros.categoriaId || null,
-    p_producto_id: filtros.productoId || null
+    p_producto_id: filtros.productoId || null,
+    p_origen: filtros.origen || null
   })
 
   if (error) throw error
@@ -235,6 +245,37 @@ export async function cargarTop(tipo, filtros, limite = 30) {
     ganancia: num(r.ganancia),
     pedidos: num(r.pedidos),
     margen: r.margen === null || r.margen === undefined ? null : num(r.margen)
+  }))
+}
+
+/* ============================================================
+   PEDIDOS POR CANAL (origen)
+   ============================================================ */
+
+export async function cargarPorOrigen(filtros) {
+  const { desde, hasta } = rangoPeriodo(
+    filtros.periodo,
+    filtros.desdePersonalizado,
+    filtros.hastaPersonalizado
+  )
+
+  const { data, error } = await supabase.rpc('dashboard_por_origen', {
+    p_desde: desde.toISOString(),
+    p_hasta: hasta.toISOString(),
+    p_categoria_id: filtros.categoriaId || null,
+    p_producto_id: filtros.productoId || null,
+    p_cliente: filtros.cliente || null,
+    p_estado: filtros.estado || null
+  })
+
+  if (error) throw error
+
+  return (data || []).map((fila) => ({
+    origen: fila.origen,
+    pedidos: num(fila.pedidos),
+    pendientes: num(fila.pendientes),
+    cancelados: num(fila.cancelados),
+    facturacion: num(fila.facturacion)
   }))
 }
 

@@ -16,15 +16,19 @@ import {
   X,
   RefreshCw,
   CheckCircle2,
-  Percent
+  Percent,
+  Search,
+  Eye
 } from 'lucide-react'
 import GraficoEvolucion from './DashboardGraficos'
 import {
   PERIODOS,
+  ORIGENES,
   cargarEstadosPedido,
   cargarResumen,
   cargarEvolucion,
   cargarTop,
+  cargarPorOrigen,
   cargarStock,
   cargarUmbrales,
   cargarProveedores,
@@ -69,6 +73,7 @@ const PESTANAS = [
   { id: 'stock', nombre: 'Stock', icono: Boxes },
   { id: 'proveedores', nombre: 'Proveedores', icono: Truck },
   { id: 'compras', nombre: 'Compras', icono: ShoppingCart },
+  { id: 'compras-costos', nombre: 'Compras y costos', icono: Coins },
   { id: 'clientes', nombre: 'Clientes', icono: Users },
   { id: 'categorias', nombre: 'Categorías', icono: Tag },
   { id: 'oportunidades', nombre: 'Oportunidades', icono: Lightbulb }
@@ -188,6 +193,7 @@ function ResumenSeccion({
   resumen,
   resumenMes,
   objetivos,
+  pedidosPorOrigen,
   cargando
 }) {
 
@@ -416,6 +422,50 @@ function ResumenSeccion({
                         : 'bajo objetivo'}
                   </small>
                 </div>
+              </div>
+            </section>
+          )}
+
+          {pedidosPorOrigen && pedidosPorOrigen.length > 0 && (
+            <section className="panel-dashboard">
+              <div className="panel-dashboard-header">
+                <div>
+                  <h3>Pedidos por canal</h3>
+                  <p>
+                    Distribución según el origen del pedido
+                    (Web, WhatsApp o Admin).
+                  </p>
+                </div>
+              </div>
+              <div className="origen-grilla">
+                {pedidosPorOrigen.map((fila) => (
+                  <div
+                    className="origen-tarjeta"
+                    key={fila.origen}
+                  >
+                    <strong>
+                      {fila.origen === 'web'
+                        ? '🌐 Web'
+                        : fila.origen === 'whatsapp'
+                          ? '💬 WhatsApp'
+                          : fila.origen === 'admin'
+                            ? '👤 Admin'
+                            : fila.origen}
+                    </strong>
+                    <span>
+                      {fila.pedidos} pedidos
+                      {fila.pendientes > 0
+                        ? ` · ${fila.pendientes} pendientes`
+                        : ''}
+                      {fila.cancelados > 0
+                        ? ` · ${fila.cancelados} cancelados`
+                        : ''}
+                    </span>
+                    <small>
+                      {formatearDinero(fila.facturacion)}
+                    </small>
+                  </div>
+                ))}
               </div>
             </section>
           )}
@@ -1689,10 +1739,673 @@ function OportunidadesSeccion({
 
 
 /* ============================================================
+   SECCIÓN: COMPRAS Y COSTOS (FASE 10)
+   Panel de negocio: dónde se gasta, dónde se paga de más,
+   qué costos aumentaron y qué productos no tienen costo.
+   SOLO LECTURA: no modifica stock, es_principal, precios,
+   proveedor_nombre ni precios_productos.
+   ============================================================ */
+
+function ComprasCostosSeccion({
+  cargando,
+  oportunidades,
+  alertas,
+  sinCosto,
+  porProveedor,
+  resumenCompras,
+  totalProductos,
+  onVerProducto
+}) {
+  const [busqueda, setBusqueda] = useState('')
+  const [ordenOportunidades, setOrdenOportunidades] = useState({
+    campo: 'ahorro_potencial',
+    direccion: 'desc'
+  })
+  const [ordenAlertas, setOrdenAlertas] = useState({
+    campo: 'fecha_cambio',
+    direccion: 'desc'
+  })
+  const [ordenSinCosto, setOrdenSinCosto] = useState({
+    campo: 'nombre',
+    direccion: 'asc'
+  })
+
+  const termino = busqueda.trim().toLowerCase()
+
+  const filtrar = (lista, campos) =>
+    lista.filter((item) =>
+      campos.some((campo) =>
+        String(item[campo] ?? '')
+          .toLowerCase()
+          .includes(termino)
+      )
+    )
+
+  const ordenar = (lista, orden, getValor) =>
+    [...lista].sort((a, b) => {
+      const va = getValor(a, orden.campo)
+      const vb = getValor(b, orden.campo)
+      const dir = orden.direccion === 'asc' ? 1 : -1
+      if (va === vb) return 0
+      if (va === null || va === undefined) return 1
+      if (vb === null || vb === undefined) return -1
+      return (va < vb ? -1 : 1) * dir
+    })
+
+  const cambiarOrden = (setOrden, campo) =>
+    setOrden((actual) => ({
+      campo,
+      direccion:
+        actual.campo === campo && actual.direccion === 'asc'
+          ? 'desc'
+          : 'asc'
+    }))
+
+  const ahorroPotencialTotal = oportunidades.reduce(
+    (acc, o) => acc + num(o.ahorro_potencial),
+    0
+  )
+
+  const totalGastado = resumenCompras.reduce(
+    (acc, r) => acc + num(r.total_comprado),
+    0
+  )
+
+  const oportunidadesVisibles = ordenar(
+    filtrar(oportunidades, [
+      'producto_nombre',
+      'codigo_interno',
+      'proveedor_actual',
+      'proveedor_alternativo'
+    ]),
+    ordenOportunidades,
+    (o, campo) => num(o[campo])
+  )
+
+  const alertasVisibles = ordenar(
+    filtrar(alertas, ['producto', 'proveedor']),
+    ordenAlertas,
+    (a, campo) => num(a[campo])
+  )
+
+  const sinCostoVisibles = ordenar(
+    filtrar(sinCosto, ['nombre', 'nombre_comercial', 'codigo_interno']),
+    ordenSinCosto,
+    (p, campo) => p[campo]
+  )
+
+  return (
+    <div className="panel-dashboard">
+      <div className="panel-dashboard-header">
+        <div>
+          <h3>Compras y costos</h3>
+          <p>
+            Dónde estás gastando, dónde podés ahorrar, qué costos
+            aumentaron y qué productos todavía no tienen costo.
+          </p>
+        </div>
+      </div>
+
+      {cargando ? (
+        <div className="cargando-dashboard">
+          <RefreshCw size={24} className="girando" />
+          Analizando compras y costos...
+        </div>
+      ) : (
+        <>
+          <div className="kpi-grid">
+            <TarjetaKpi
+              titulo="Ahorro potencial"
+              valor={formatearDinero(ahorroPotencialTotal)}
+              icono={<Coins size={20} />}
+              color="verde"
+            />
+            <TarjetaKpi
+              titulo="Aumentos de costo"
+              valor={alertas.length}
+              icono={<AlertTriangle size={20} />}
+              color="rojo"
+            />
+            <TarjetaKpi
+              titulo="Sin costo cargado"
+              valor={sinCosto.length}
+              icono={<Package size={20} />}
+              color="naranja"
+            />
+            <TarjetaKpi
+              titulo="Total gastado"
+              valor={formatearDinero(totalGastado)}
+              icono={<ShoppingCart size={20} />}
+              color="azul"
+            />
+            <TarjetaKpi
+              titulo="Productos en cartera"
+              valor={totalProductos}
+              icono={<Boxes size={20} />}
+              color="azul"
+            />
+            <TarjetaKpi
+              titulo="Proveedores"
+              valor={porProveedor.length}
+              icono={<Truck size={20} />}
+              color="azul"
+            />
+          </div>
+
+          <div className="buscador-dashboard">
+            <Search size={16} />
+            <input
+              type="text"
+              placeholder="Buscar producto, código o proveedor..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+
+          <div className="panel-dashboard-header">
+            <div>
+              <h3>💡 Dónde ahorrar</h3>
+              <p>
+                Productos donde un proveedor alternativo es más barato
+                que el proveedor principal. La sugerencia no cambia
+                nada: es informativa.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="boton-exportar"
+              onClick={() =>
+                exportarCSV(
+                  'donde-ahorrar.csv',
+                  oportunidadesVisibles.map((o) => ({
+                    producto: o.producto_nombre,
+                    codigo: o.codigo_interno,
+                    proveedor_actual: o.proveedor_actual,
+                    costo_actual: o.costo_actual,
+                    proveedor_alternativo: o.proveedor_alternativo,
+                    costo_alternativo: o.costo_alternativo,
+                    ahorro_unitario: o.ahorro_unitario,
+                    stock: o.stock,
+                    ahorro_potencial: o.ahorro_potencial
+                  }))
+                )
+              }
+            >
+              <Download size={15} />
+              Exportar CSV
+            </button>
+          </div>
+
+          {oportunidadesVisibles.length === 0 ? (
+            <div className="sin-datos">
+              Hoy comprás al mejor precio disponible en todos tus
+              proveedores. No hay ahorro detectado.
+            </div>
+          ) : (
+            <div className="tabla-contenedor">
+              <table className="tabla-dashboard">
+                <thead>
+                  <tr>
+                    <th>
+                      <OrdenarColumna
+                        activo={
+                          ordenOportunidades.campo === 'producto_nombre'
+                        }
+                        direccion={ordenOportunidades.direccion}
+                        onClick={() =>
+                          cambiarOrden(
+                            setOrdenOportunidades,
+                            'producto_nombre'
+                          )
+                        }
+                      >
+                        Producto
+                      </OrdenarColumna>
+                    </th>
+                    <th>Proveedor actual</th>
+                    <th>Alternativo</th>
+                    <th>
+                      <OrdenarColumna
+                        activo={
+                          ordenOportunidades.campo === 'ahorro_unitario'
+                        }
+                        direccion={ordenOportunidades.direccion}
+                        onClick={() =>
+                          cambiarOrden(
+                            setOrdenOportunidades,
+                            'ahorro_unitario'
+                          )
+                        }
+                      >
+                        Ahorro / unid
+                      </OrdenarColumna>
+                    </th>
+                    <th>Stock</th>
+                    <th>
+                      <OrdenarColumna
+                        activo={
+                          ordenOportunidades.campo === 'ahorro_potencial'
+                        }
+                        direccion={ordenOportunidades.direccion}
+                        onClick={() =>
+                          cambiarOrden(
+                            setOrdenOportunidades,
+                            'ahorro_potencial'
+                          )
+                        }
+                      >
+                        Ahorro potencial
+                      </OrdenarColumna>
+                    </th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {oportunidadesVisibles.map((o) => (
+                    <tr
+                      key={o.producto_id}
+                      className="fila-accion"
+                      onClick={() =>
+                        onVerProducto({
+                          id: o.producto_id,
+                          nombre: o.producto_nombre,
+                          nombre_comercial: o.producto_nombre,
+                          codigo_interno: o.codigo_interno
+                        })
+                      }
+                    >
+                      <td>
+                        <strong>{o.producto_nombre}</strong>
+                        <span className="celda-sub">
+                          {o.codigo_interno || '—'}
+                        </span>
+                      </td>
+                      <td>
+                        {o.proveedor_actual}
+                        <span className="celda-sub">
+                          {formatearDinero(o.costo_actual)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge-mejor-precio">
+                          {o.proveedor_alternativo}
+                        </span>
+                        <span className="celda-sub">
+                          {formatearDinero(o.costo_alternativo)}
+                        </span>
+                      </td>
+                      <td>
+                        <strong className="texto-ahorro">
+                          −{formatearDinero(o.ahorro_unitario)}
+                        </strong>
+                      </td>
+                      <td>{num(o.stock)}</td>
+                      <td>
+                        <strong className="texto-ahorro">
+                          {formatearDinero(o.ahorro_potencial)}
+                        </strong>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="accion-icono"
+                          title="Ver producto"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onVerProducto({
+                              id: o.producto_id,
+                              nombre: o.producto_nombre,
+                              nombre_comercial: o.producto_nombre,
+                              codigo_interno: o.codigo_interno
+                            })
+                          }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="panel-dashboard-header">
+            <div>
+              <h3>⚠️ Costos que aumentaron</h3>
+              <p>
+                Compras donde el costo superó el porcentaje de alerta
+                configurado en el proveedor. Solo información.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="boton-exportar"
+              onClick={() =>
+                exportarCSV(
+                  'aumentos-costo.csv',
+                  alertasVisibles.map((a) => ({
+                    fecha: a.fecha_cambio,
+                    producto: a.producto,
+                    proveedor: a.proveedor,
+                    costo_anterior: a.precio_anterior,
+                    costo_nuevo: a.precio_nuevo,
+                    aumento_porcentaje: a.aumento_porcentaje,
+                    umbral: a.porcentaje_alerta
+                  }))
+                )
+              }
+            >
+              <Download size={15} />
+              Exportar CSV
+            </button>
+          </div>
+
+          {alertasVisibles.length === 0 ? (
+            <div className="sin-datos">
+              Ningún costo superó el umbral de alerta de su proveedor.
+            </div>
+          ) : (
+            <div className="tabla-contenedor">
+              <table className="tabla-dashboard">
+                <thead>
+                  <tr>
+                    <th>
+                      <OrdenarColumna
+                        activo={ordenAlertas.campo === 'fecha_cambio'}
+                        direccion={ordenAlertas.direccion}
+                        onClick={() =>
+                          cambiarOrden(
+                            setOrdenAlertas,
+                            'fecha_cambio'
+                          )
+                        }
+                      >
+                        Fecha
+                      </OrdenarColumna>
+                    </th>
+                    <th>
+                      <OrdenarColumna
+                        activo={ordenAlertas.campo === 'producto'}
+                        direccion={ordenAlertas.direccion}
+                        onClick={() =>
+                          cambiarOrden(setOrdenAlertas, 'producto')
+                        }
+                      >
+                        Producto
+                      </OrdenarColumna>
+                    </th>
+                    <th>Proveedor</th>
+                    <th>Costo anterior</th>
+                    <th>Costo nuevo</th>
+                    <th>
+                      <OrdenarColumna
+                        activo={
+                          ordenAlertas.campo === 'aumento_porcentaje'
+                        }
+                        direccion={ordenAlertas.direccion}
+                        onClick={() =>
+                          cambiarOrden(
+                            setOrdenAlertas,
+                            'aumento_porcentaje'
+                          )
+                        }
+                      >
+                        Aumento
+                      </OrdenarColumna>
+                    </th>
+                    <th>Umbral</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertasVisibles.map((a, i) => (
+                    <tr key={i}>
+                      <td>
+                        {new Date(a.fecha_cambio).toLocaleDateString(
+                          'es-UY'
+                        )}
+                      </td>
+                      <td>
+                        <strong>{a.producto}</strong>
+                      </td>
+                      <td>{a.proveedor}</td>
+                      <td>{formatearDinero(a.precio_anterior)}</td>
+                      <td>{formatearDinero(a.precio_nuevo)}</td>
+                      <td>
+                        <span className="badge-mas-caro">
+                          +{num(a.aumento_porcentaje).toFixed(2)}%
+                        </span>
+                      </td>
+                      <td className="celda-sub">
+                        umbral {num(a.porcentaje_alerta)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="panel-dashboard-header">
+            <div>
+              <h3>📦 Productos sin costo</h3>
+              <p>
+                No tienen costo cargado: no se pueden calcular precios
+                ni rentabilidad. Entrá al producto para cargarlo.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="boton-exportar"
+              onClick={() =>
+                exportarCSV(
+                  'sin-costo.csv',
+                  sinCostoVisibles.map((p) => ({
+                    producto: p.nombre_comercial || p.nombre,
+                    codigo: p.codigo_interno,
+                    stock: p.stock
+                  }))
+                )
+              }
+            >
+              <Download size={15} />
+              Exportar CSV
+            </button>
+          </div>
+
+          {sinCostoVisibles.length === 0 ? (
+            <div className="sin-datos">
+              Todos los productos tienen costo cargado.
+            </div>
+          ) : (
+            <div className="tabla-contenedor">
+              <table className="tabla-dashboard">
+                <thead>
+                  <tr>
+                    <th>
+                      <OrdenarColumna
+                        activo={ordenSinCosto.campo === 'nombre'}
+                        direccion={ordenSinCosto.direccion}
+                        onClick={() =>
+                          cambiarOrden(setOrdenSinCosto, 'nombre')
+                        }
+                      >
+                        Producto
+                      </OrdenarColumna>
+                    </th>
+                    <th>Código</th>
+                    <th>Stock</th>
+                    <th>Proveedor principal</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sinCostoVisibles.map((p) => (
+                    <tr
+                      key={p.id}
+                      className="fila-accion"
+                      onClick={() =>
+                        onVerProducto({
+                          id: p.id,
+                          nombre: p.nombre,
+                          nombre_comercial: p.nombre_comercial,
+                          codigo_interno: p.codigo_interno
+                        })
+                      }
+                    >
+                      <td>
+                        <strong>{p.nombre_comercial || p.nombre}</strong>
+                      </td>
+                      <td>{p.codigo_interno || '—'}</td>
+                      <td>{num(p.stock)}</td>
+                      <td>{p.proveedor_nombre || '—'}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="accion-icono"
+                          title="Ver producto"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onVerProducto({
+                              id: p.id,
+                              nombre: p.nombre,
+                              nombre_comercial: p.nombre_comercial,
+                              codigo_interno: p.codigo_interno
+                            })
+                          }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="panel-dashboard-header">
+            <div>
+              <h3>🏷️ Productos por proveedor</h3>
+              <p>Distribución de productos vinculados a cada proveedor.</p>
+            </div>
+          </div>
+
+          {porProveedor.length === 0 ? (
+            <div className="sin-datos">
+              Todavía no hay productos vinculados a proveedores.
+            </div>
+          ) : (
+            <div className="lista-proveedores">
+              {porProveedor.map((p) => (
+                <div key={p.proveedor_id} className="proveedor-barra">
+                  <div className="proveedor-barra-info">
+                    <strong>{p.proveedor_nombre}</strong>
+                    <span>
+                      {p.cantidad} productos · {p.principales} principal
+                      {p.principales !== 1 ? 'es' : ''}
+                    </span>
+                  </div>
+                  <div className="barra-proveedor">
+                    <div
+                      className="barra-proveedor-relleno"
+                      style={{
+                        width: `${(p.cantidad / p.total) * 100}%`
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="panel-dashboard-header">
+            <div>
+              <h3>📊 Indicadores de compras</h3>
+              <p>
+                Total gastado por proveedor, cantidad de compras y costo
+                promedio.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="boton-exportar"
+              onClick={() =>
+                exportarCSV(
+                  'indicadores-compras.csv',
+                  resumenCompras.map((r) => ({
+                    proveedor: r.proveedor_nombre,
+                    compras: r.cantidad_compras,
+                    total_gastado: r.total_comprado,
+                    ultima_compra: r.ultima_compra,
+                    productos_comprados: r.productos_comprados,
+                    costo_promedio: r.costo_promedio
+                  }))
+                )
+              }
+            >
+              <Download size={15} />
+              Exportar CSV
+            </button>
+          </div>
+
+          {resumenCompras.length === 0 ? (
+            <div className="sin-datos">
+              No hay compras registradas todavía. Cuando registres
+              compras, acá vas a ver por proveedor cuánto gastaste.
+            </div>
+          ) : (
+            <div className="tabla-contenedor">
+              <table className="tabla-dashboard">
+                <thead>
+                  <tr>
+                    <th>Proveedor</th>
+                    <th>Compras</th>
+                    <th>Total gastado</th>
+                    <th>Última compra</th>
+                    <th>Productos comprados</th>
+                    <th>Costo promedio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resumenCompras.map((r) => (
+                    <tr key={r.proveedor_id}>
+                      <td>
+                        <strong>{r.proveedor_nombre}</strong>
+                      </td>
+                      <td>{num(r.cantidad_compras)}</td>
+                      <td>{formatearDinero(r.total_comprado)}</td>
+                      <td>
+                        {r.ultima_compra
+                          ? new Date(r.ultima_compra).toLocaleDateString(
+                              'es-UY'
+                            )
+                          : '—'}
+                      </td>
+                      <td>{num(r.productos_comprados)}</td>
+                      <td>
+                        {r.costo_promedio !== null
+                          ? formatearDinero(r.costo_promedio)
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+
+/* ============================================================
    COMPONENTE PRINCIPAL
    ============================================================ */
 
-export default function DashboardAdmin() {
+export default function DashboardAdmin({ onVerProducto }) {
 
   const [pestana, setPestana] = useState('resumen')
   const [periodo, setPeriodo] = useState('30d')
@@ -1702,6 +2415,7 @@ export default function DashboardAdmin() {
   const [filtroProducto, setFiltroProducto] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroOrigen, setFiltroOrigen] = useState('')
   const [agrupacion, setAgrupacion] = useState('dia')
 
   const [categorias, setCategorias] = useState([])
@@ -1726,6 +2440,18 @@ export default function DashboardAdmin() {
   const [comprasData, setComprasData] = useState(null)
   const [objetivos, setObjetivos] = useState(null)
 
+  const [comprasCostos, setComprasCostos] = useState({
+    cargando: false,
+    oportunidades: [],
+    alertas: [],
+    sinCosto: [],
+    porProveedor: [],
+    resumenCompras: [],
+    totalProductos: 0
+  })
+
+  const [pedidosPorOrigen, setPedidosPorOrigen] = useState([])
+
   const [cargandoVentas, setCargandoVentas] = useState(true)
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true)
   const [error, setError] = useState('')
@@ -1742,7 +2468,8 @@ export default function DashboardAdmin() {
       categoriaId: filtroCategoria ? Number(filtroCategoria) : null,
       productoId: filtroProducto ? Number(filtroProducto) : null,
       cliente: filtroCliente || null,
-      estado: filtroEstado || null
+      estado: filtroEstado || null,
+      origen: filtroOrigen || null
     }),
     [
       periodo,
@@ -1751,7 +2478,8 @@ export default function DashboardAdmin() {
       filtroCategoria,
       filtroProducto,
       filtroCliente,
-      filtroEstado
+      filtroEstado,
+      filtroOrigen
     ]
   )
 
@@ -1813,13 +2541,14 @@ export default function DashboardAdmin() {
       setCargandoVentas(true)
       setError('')
       try {
-        const [res, evol, topP, topC, topCli, mes] = await Promise.all([
+        const [res, evol, topP, topC, topCli, mes, porOrigen] = await Promise.all([
           cargarResumen(filtros),
           cargarEvolucion(filtros, agrupacion),
           cargarTop('productos', filtros, 60),
           cargarTop('categorias', filtros, 30),
           cargarTop('clientes', filtros, 50),
-          cargarResumen({ periodo: 'mes' })
+          cargarResumen({ periodo: 'mes' }),
+          cargarPorOrigen(filtros)
         ])
 
         if (!activo) return
@@ -1830,6 +2559,7 @@ export default function DashboardAdmin() {
         setTopProductos(topP)
         setTopCategorias(topC)
         setTopClientes(topCli)
+        setPedidosPorOrigen(porOrigen)
       } catch (e) {
         if (activo) {
           console.error('Error cargando ventas del dashboard:', e)
@@ -2011,48 +2741,103 @@ export default function DashboardAdmin() {
     resumen
   ])
 
+  async function cargarComprasCostos() {
+    setComprasCostos((actual) => ({ ...actual, cargando: true }))
+
+    try {
+      const [
+        respuestaOportunidades,
+        respuestaAlertas,
+        respuestaResumen,
+        respuestaSinCosto,
+        respuestaRelaciones,
+        respuestaProveedores,
+        respuestaTotal
+      ] = await Promise.all([
+        supabase.rpc('dashboard_oportunidades'),
+        supabase.rpc('alertas_precio'),
+        supabase.rpc('compras_proveedor_resumen'),
+        supabase
+          .from('productos')
+          .select(
+            'id, nombre, nombre_comercial, codigo_interno, stock, proveedor_nombre'
+          )
+          .is('precio_costo', null),
+        supabase
+          .from('producto_proveedores')
+          .select('id, proveedor_id, es_principal'),
+        supabase
+          .from('proveedores')
+          .select('id, nombre')
+          .eq('activo', true),
+        supabase
+          .from('productos')
+          .select('id', { count: 'exact', head: true })
+      ])
+
+      if (respuestaOportunidades.error) throw respuestaOportunidades.error
+      if (respuestaAlertas.error) throw respuestaAlertas.error
+      if (respuestaResumen.error) throw respuestaResumen.error
+      if (respuestaSinCosto.error) throw respuestaSinCosto.error
+      if (respuestaRelaciones.error) throw respuestaRelaciones.error
+      if (respuestaProveedores.error) throw respuestaProveedores.error
+      if (respuestaTotal.error) throw respuestaTotal.error
+
+      const relaciones = respuestaRelaciones.data || []
+      const totalRelaciones = relaciones.length || 1
+
+      const porProveedor = (respuestaProveedores.data || [])
+        .map((prov) => {
+          const deEste = relaciones.filter(
+            (r) => r.proveedor_id === prov.id
+          )
+          return {
+            proveedor_id: prov.id,
+            proveedor_nombre: prov.nombre,
+            cantidad: deEste.length,
+            principales: deEste.filter((r) => r.es_principal).length,
+            total: totalRelaciones
+          }
+        })
+        .filter((p) => p.cantidad > 0)
+
+      setComprasCostos({
+        cargando: false,
+        oportunidades: respuestaOportunidades.data || [],
+        alertas: respuestaAlertas.data || [],
+        sinCosto: respuestaSinCosto.data || [],
+        porProveedor,
+        resumenCompras: respuestaResumen.data || [],
+        totalProductos: respuestaTotal.count || 0
+      })
+    } catch (e) {
+      console.error('Error cargando compras y costos:', e)
+      setComprasCostos((actual) => ({ ...actual, cargando: false }))
+    }
+  }
+
+  useEffect(() => {
+    if (pestana === 'compras-costos') {
+      cargarComprasCostos()
+    }
+  }, [pestana])
+
   const guardarCompra = async (datos) => {
     try {
-      const { data: compra, error } = await supabase
-        .from('compras')
-        .insert({
-          proveedor_id: datos.proveedorId,
-          fecha: datos.fecha,
-          comprobante: datos.comprobante || null,
-          observaciones: datos.observaciones || null
-        })
-        .select()
-        .single()
+      const { error } = await supabase.rpc('registrar_compra', {
+        p_proveedor_id: datos.proveedorId,
+        p_fecha: datos.fecha,
+        p_comprobante: datos.comprobante || null,
+        p_observaciones: datos.observaciones || null,
+        p_items: datos.lineas.map((linea) => ({
+          producto_id: linea.productoId,
+          variante_id: null,
+          cantidad: num(linea.cantidad) || 1,
+          costo_unitario: num(linea.costoUnitario)
+        }))
+      })
 
       if (error) throw error
-
-      for (const linea of datos.lineas) {
-        const costoUnitario = num(linea.costoUnitario)
-        const { error: errorLinea } = await supabase
-          .from('compra_items')
-          .insert({
-            compra_id: compra.id,
-            producto_id: linea.productoId,
-            variante_id: linea.varianteId || null,
-            cantidad: num(linea.cantidad) || 1,
-            costo_unitario: costoUnitario || null,
-            costo_total:
-              costoUnitario > 0
-                ? costoUnitario * (num(linea.cantidad) || 1)
-                : null
-          })
-
-        if (errorLinea) throw errorLinea
-
-        if (datos.actualizarCosto && costoUnitario > 0) {
-          const { error: errorCosto } = await supabase
-            .from('productos')
-            .update({ precio_costo: costoUnitario })
-            .eq('id', linea.productoId)
-
-          if (errorCosto) throw errorCosto
-        }
-      }
 
       setComprasData(await cargarCompras())
       setMostrarCompra(false)
@@ -2150,6 +2935,18 @@ export default function DashboardAdmin() {
             </option>
           ))}
         </select>
+
+        <select
+          value={filtroOrigen}
+          onChange={(e) => setFiltroOrigen(e.target.value)}
+          aria-label="Canal de origen"
+        >
+          {ORIGENES.map((o) => (
+            <option key={o.valor || 'todos'} value={o.valor || ''}>
+              {o.nombre}
+            </option>
+          ))}
+        </select>
       </div>
 
       <nav className="pestanas-dashboard">
@@ -2181,6 +2978,7 @@ export default function DashboardAdmin() {
           resumen={resumen}
           resumenMes={resumenMes}
           objetivos={objetivos}
+          pedidosPorOrigen={pedidosPorOrigen}
           cargando={cargandoVentas}
         />
       )}
@@ -2236,6 +3034,19 @@ export default function DashboardAdmin() {
           proveedoresData={proveedoresData}
           cargando={cargandoCatalogo}
           onRegistrarCompra={() => setMostrarCompra(true)}
+        />
+      )}
+
+      {pestana === 'compras-costos' && (
+        <ComprasCostosSeccion
+          cargando={comprasCostos.cargando}
+          oportunidades={comprasCostos.oportunidades}
+          alertas={comprasCostos.alertas}
+          sinCosto={comprasCostos.sinCosto}
+          porProveedor={comprasCostos.porProveedor}
+          resumenCompras={comprasCostos.resumenCompras}
+          totalProductos={comprasCostos.totalProductos}
+          onVerProducto={onVerProducto}
         />
       )}
 
@@ -2314,7 +3125,6 @@ function ModalRegistrarCompra({
   )
   const [comprobante, setComprobante] = useState('')
   const [observaciones, setObservaciones] = useState('')
-  const [actualizarCosto, setActualizarCosto] = useState(true)
   const [lineas, setLineas] = useState([
     { productoId: '', cantidad: 1, costoUnitario: '' }
   ])
@@ -2349,7 +3159,6 @@ function ModalRegistrarCompra({
         fecha,
         comprobante,
         observaciones,
-        actualizarCosto,
         lineas: lineasValidas.map((l) => ({
           productoId: Number(l.productoId),
           cantidad: num(l.cantidad),
@@ -2483,15 +3292,11 @@ function ModalRegistrarCompra({
             Agregar línea
           </button>
 
-          <label className="checkbox-costo">
-            <input
-              type="checkbox"
-              checked={actualizarCosto}
-              onChange={(e) => setActualizarCosto(e.target.checked)}
-            />
-            Actualizar el costo actual del producto con el costo de esta
-            compra
-          </label>
+          <div className="nota-costo">
+            El costo se actualiza automáticamente según la configuración
+            del proveedor (solo si es el proveedor principal del
+            producto).
+          </div>
 
           <label>
             Observaciones

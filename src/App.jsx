@@ -29,11 +29,15 @@ import {
   ListChecks,
   LayoutGrid,
   List,
+  GitCompareArrows,
   BarChart3
 } from 'lucide-react'
 
 import { supabase } from './lib/supabase'
 import DashboardAdmin from './components/DashboardAdmin'
+import ProveedoresPage from './components/ProveedoresPage'
+import ComparacionProveedoresPage from './components/ComparacionProveedoresPage'
+import ComprasPage from './components/ComprasPage'
 import {
   proponerNormalizaciones,
   decodificarNombre
@@ -302,6 +306,16 @@ async function cargarCategorias() {
     },
 
     {
+      nombre: 'Comparación proveedores',
+      icono: GitCompareArrows
+    },
+
+    {
+      nombre: 'Compras',
+      icono: ClipboardList
+    },
+
+    {
       nombre: 'Configuración',
       icono: Settings
     }
@@ -488,7 +502,7 @@ async function cargarCategorias() {
 
         {pagina === 'Dashboard' &&
           usuario?.rol_id === 1 && (
-          <DashboardAdmin />
+          <DashboardAdmin onVerProducto={abrirProducto} />
         )}
 
 
@@ -558,6 +572,34 @@ async function cargarCategorias() {
         )}
 
 
+        {pagina === 'Clientes' && (
+
+          <ClientesPage />
+
+        )}
+
+
+        {pagina === 'Proveedores' && (
+
+          <ProveedoresPage />
+
+        )}
+
+
+        {pagina === 'Comparación proveedores' && (
+
+          <ComparacionProveedoresPage />
+
+        )}
+
+
+        {pagina === 'Compras' && (
+
+          <ComprasPage />
+
+        )}
+
+
         {pagina === 'ProductoDetalle' &&
           productoSeleccionado && (
 
@@ -575,6 +617,10 @@ async function cargarCategorias() {
           pagina !== 'NuevoPedido' &&
           pagina !== 'PedidoDetalle' &&
           pagina !== 'Productos' &&
+          pagina !== 'Clientes' &&
+          pagina !== 'Proveedores' &&
+          pagina !== 'Comparación proveedores' &&
+          pagina !== 'Compras' &&
           pagina !== 'ProductoDetalle' && (
 
             <div className="pagina-proximamente">
@@ -619,7 +665,7 @@ function Dashboard({
 
     const { data, error } = await supabase
       .from('pedidos')
-      .select('id, numero_pedido, cliente_nombre, cliente_telefono, estado, total, creado_en')
+      .select('id, numero_pedido, cliente_nombre, cliente_telefono, cliente_email, origen, estado, total, creado_en')
       .order('creado_en', { ascending: false })
 
     if (error) {
@@ -796,6 +842,7 @@ useEffect(() => {
                     </strong>
                     <br />
                     <EstadoPedido estado={pedido.estado} />
+                    <OrigenPedido origen={pedido.origen} />
                   </div>
                 </div>
               ))}
@@ -1256,6 +1303,12 @@ function Pedidos({
                       }
                     />
 
+                    <OrigenPedido
+                      origen={
+                        pedido.origen
+                      }
+                    />
+
                   </div>
 
 
@@ -1319,6 +1372,593 @@ function FiltroPedido({
 
     </button>
 
+  )
+}
+
+
+/* ============================================================
+   CLIENTES
+   ============================================================ */
+
+function ClientesPage() {
+
+  const [clientes, setClientes] = useState([])
+  const [pedidos, setPedidos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [busqueda, setBusqueda] = useState('')
+  const [filtro, setFiltro] = useState('todos')
+  const [seleccionado, setSeleccionado] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    cargarDatos()
+  }, [])
+
+  async function cargarDatos() {
+    setCargando(true)
+
+    const [respuestaClientes, respuestaPedidos] = await Promise.all([
+      supabase
+        .from('clientes')
+        .select('*')
+        .order('id', { ascending: false }),
+
+      supabase
+        .from('pedidos')
+        .select('id, numero_pedido, cliente_id, cliente_email, cliente_nombre, estado, total, creado_en, origen')
+        .order('creado_en', { ascending: false })
+    ])
+
+    if (respuestaClientes.error) {
+      console.error('Error cargando clientes:', respuestaClientes.error)
+      setCargando(false)
+      return
+    }
+
+    setClientes(respuestaClientes.data || [])
+    setPedidos(respuestaPedidos.data || [])
+    setCargando(false)
+  }
+
+  const pedidosDelCliente = (cliente) =>
+    pedidos.filter(
+      (p) =>
+        (p.cliente_id !== null && p.cliente_id === cliente.id) ||
+        (cliente.email &&
+          p.cliente_email &&
+          p.cliente_email.toLowerCase() === cliente.email.toLowerCase())
+    )
+
+  const clientesFiltrados = clientes.filter((cliente) => {
+    const texto =
+      `${cliente.nombre || ''} ${cliente.email || ''} ${cliente.telefono || ''} ${cliente.whatsapp || ''}`
+        .toLowerCase()
+
+    const coincideBusqueda =
+      texto.includes(busqueda.toLowerCase())
+
+    const coincideFiltro =
+      filtro === 'todos' ||
+      (filtro === 'mayorista' && cliente.tipo_cliente === 'mayorista') ||
+      (filtro === 'minorista' && cliente.tipo_cliente === 'minorista') ||
+      (filtro === 'registrados' && cliente.auth_user_id) ||
+      (filtro === 'manuales' && !cliente.auth_user_id)
+
+    return coincideBusqueda && coincideFiltro
+  })
+
+  async function cambiarTipo(cliente, tipo) {
+    const { error } = await supabase
+      .from('clientes')
+      .update({ tipo_cliente: tipo })
+      .eq('id', cliente.id)
+
+    if (error) {
+      console.error('Error actualizando tipo de cliente:', error)
+      alert('No se pudo actualizar el tipo: ' + error.message)
+      return
+    }
+
+    setClientes((actuales) =>
+      actuales.map((c) =>
+        c.id === cliente.id ? { ...c, tipo_cliente: tipo } : c
+      )
+    )
+
+    if (seleccionado?.id === cliente.id) {
+      setSeleccionado({ ...seleccionado, tipo_cliente: tipo })
+    }
+  }
+
+  async function guardarCliente(e) {
+    e.preventDefault()
+
+    if (!seleccionado?.nombre?.trim()) {
+      alert('El nombre del cliente es obligatorio.')
+      return
+    }
+
+    setGuardando(true)
+
+    const { data, error } = await supabase
+      .from('clientes')
+      .update({
+        nombre: seleccionado.nombre.trim(),
+        telefono: seleccionado.telefono?.trim() || null,
+        whatsapp: seleccionado.whatsapp?.trim() || null,
+        email: seleccionado.email?.trim().toLowerCase() || null,
+        direccion: seleccionado.direccion?.trim() || null,
+        ciudad: seleccionado.ciudad?.trim() || null,
+        observaciones: seleccionado.observaciones?.trim() || null,
+        razon_social: seleccionado.razon_social?.trim() || null,
+        documento: seleccionado.documento?.trim() || null,
+        notas_mayorista: seleccionado.notas_mayorista?.trim() || null
+      })
+      .eq('id', seleccionado.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error guardando cliente:', error)
+      alert('No se pudo guardar el cliente: ' + error.message)
+      setGuardando(false)
+      return
+    }
+
+    setClientes((actuales) =>
+      actuales.map((c) => (c.id === data.id ? data : c))
+    )
+    setSeleccionado(data)
+    setGuardando(false)
+  }
+
+  function setCampo(campo, valor) {
+    setSeleccionado((actual) => ({ ...actual, [campo]: valor }))
+  }
+
+  if (seleccionado) {
+    const pedidosCliente = pedidosDelCliente(seleccionado)
+
+    return (
+      <>
+        <header className="topbar">
+          <div>
+            <button
+              className="boton-volver"
+              onClick={() => setSeleccionado(null)}
+            >
+              <ArrowLeft size={18} />
+              Volver a clientes
+            </button>
+            <h1>
+              {seleccionado.nombre}
+            </h1>
+            <p>
+              {seleccionado.email || 'Sin email'}
+              {seleccionado.telefono
+                ? ` · ${seleccionado.telefono}`
+                : ''}
+            </p>
+          </div>
+        </header>
+
+        <section className="panel detalle-panel">
+
+          <div className="panel-header">
+            <div>
+              <h2>
+                Datos del cliente
+              </h2>
+            </div>
+            <span
+              className={
+                seleccionado.tipo_cliente === 'mayorista'
+                  ? 'chip-tipo mayorista'
+                  : 'chip-tipo'
+              }
+            >
+              {seleccionado.tipo_cliente === 'mayorista'
+                ? 'Mayorista'
+                : 'Minorista'}
+            </span>
+          </div>
+
+          <div className="cliente-tipo-acciones">
+            <button
+              type="button"
+              disabled={seleccionado.tipo_cliente === 'mayorista'}
+              onClick={() => cambiarTipo(seleccionado, 'mayorista')}
+            >
+              Hacer mayorista
+            </button>
+            <button
+              type="button"
+              disabled={seleccionado.tipo_cliente === 'minorista'}
+              onClick={() => cambiarTipo(seleccionado, 'minorista')}
+            >
+              Hacer minorista
+            </button>
+          </div>
+
+          <div className="detalle-datos">
+            <div>
+              <span>Nombre</span>
+              <strong>{seleccionado.nombre}</strong>
+            </div>
+            <div>
+              <span>Email</span>
+              <strong>{seleccionado.email || '—'}</strong>
+            </div>
+            <div>
+              <span>Teléfono</span>
+              <strong>{seleccionado.telefono || '—'}</strong>
+            </div>
+            <div>
+              <span>WhatsApp</span>
+              <strong>{seleccionado.whatsapp || '—'}</strong>
+            </div>
+            <div>
+              <span>Dirección</span>
+              <strong>{seleccionado.direccion || '—'}</strong>
+            </div>
+            <div>
+              <span>Ciudad</span>
+              <strong>{seleccionado.ciudad || '—'}</strong>
+            </div>
+            <div>
+              <span>Cuenta</span>
+              <strong>
+                {seleccionado.auth_user_id
+                  ? 'Registrado en el portal'
+                  : 'Cargado manualmente'}
+              </strong>
+            </div>
+            <div>
+              <span>Cliente desde</span>
+              <strong>
+                {formatearFecha(seleccionado.created_at)}
+              </strong>
+            </div>
+          </div>
+
+          {pedidosCliente.length > 0 && (
+            <>
+              <div className="panel-header">
+                <div>
+                  <h2>
+                    Pedidos ({pedidosCliente.length})
+                  </h2>
+                </div>
+              </div>
+              <div className="lista-configuracion">
+                {pedidosCliente.map((pedido) => (
+                  <div
+                    className="configuracion-item"
+                    key={pedido.id}
+                  >
+                    <div className="configuracion-icono">
+                      <ShoppingBag size={20} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <strong>
+                        Pedido #{pedido.numero_pedido || pedido.id}
+                      </strong>
+                      <span>
+                        {formatearFecha(pedido.creado_en)}
+                        {' · '}
+                        <OrigenPedido origen={pedido.origen} />
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <strong>
+                        ${Number(pedido.total || 0).toLocaleString('es-UY')}
+                      </strong>
+                      <br />
+                      <EstadoPedido estado={pedido.estado} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+        </section>
+
+        <section className="panel detalle-panel">
+
+          <div className="panel-header">
+            <div>
+              <h2>
+                Editar datos
+              </h2>
+              <p>
+                Cambiá la información del cliente.
+              </p>
+            </div>
+          </div>
+
+          <form
+            className="cliente-form"
+            onSubmit={guardarCliente}
+          >
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-nombre">Nombre *</label>
+              <input
+                id="cliente-nombre"
+                type="text"
+                value={seleccionado.nombre || ''}
+                onChange={(e) => setCampo('nombre', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-email">Email</label>
+              <input
+                id="cliente-email"
+                type="email"
+                value={seleccionado.email || ''}
+                onChange={(e) => setCampo('email', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-telefono">Teléfono</label>
+              <input
+                id="cliente-telefono"
+                type="text"
+                value={seleccionado.telefono || ''}
+                onChange={(e) => setCampo('telefono', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-whatsapp">WhatsApp</label>
+              <input
+                id="cliente-whatsapp"
+                type="text"
+                value={seleccionado.whatsapp || ''}
+                onChange={(e) => setCampo('whatsapp', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-direccion">Dirección</label>
+              <input
+                id="cliente-direccion"
+                type="text"
+                value={seleccionado.direccion || ''}
+                onChange={(e) => setCampo('direccion', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-ciudad">Ciudad</label>
+              <input
+                id="cliente-ciudad"
+                type="text"
+                value={seleccionado.ciudad || ''}
+                onChange={(e) => setCampo('ciudad', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-razon">Razón social</label>
+              <input
+                id="cliente-razon"
+                type="text"
+                value={seleccionado.razon_social || ''}
+                onChange={(e) => setCampo('razon_social', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo">
+              <label htmlFor="cliente-documento">Documento</label>
+              <input
+                id="cliente-documento"
+                type="text"
+                value={seleccionado.documento || ''}
+                onChange={(e) => setCampo('documento', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo ancho-completo">
+              <label htmlFor="cliente-observaciones">Observaciones</label>
+              <textarea
+                id="cliente-observaciones"
+                rows="2"
+                value={seleccionado.observaciones || ''}
+                onChange={(e) => setCampo('observaciones', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-campo ancho-completo">
+              <label htmlFor="cliente-notas-mayorista">Notas mayorista</label>
+              <textarea
+                id="cliente-notas-mayorista"
+                rows="2"
+                value={seleccionado.notas_mayorista || ''}
+                onChange={(e) => setCampo('notas_mayorista', e.target.value)}
+              />
+            </div>
+            <div className="cliente-form-acciones">
+              <button
+                className="crear"
+                type="submit"
+                disabled={guardando}
+              >
+                <Save size={18} />
+                {guardando ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </form>
+
+        </section>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <header className="topbar">
+        <div>
+          <h1>
+            Clientes
+          </h1>
+          <p>
+            Administrá los clientes de tu negocio
+            y su tipo de precio.
+          </p>
+        </div>
+        <button
+          className="nuevo-pedido"
+          type="button"
+          onClick={cargarDatos}
+        >
+          <RefreshCw size={18} />
+          Actualizar
+        </button>
+      </header>
+
+      <section className="panel">
+
+        <div className="productos-toolbar">
+
+          <div className="buscador">
+            <Search size={18} />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, email o teléfono..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap',
+            marginBottom: '20px'
+          }}
+        >
+          <FiltroPedido
+            activo={filtro === 'todos'}
+            onClick={() => setFiltro('todos')}
+          >
+            Todos
+          </FiltroPedido>
+          <FiltroPedido
+            activo={filtro === 'mayorista'}
+            onClick={() => setFiltro('mayorista')}
+          >
+            Mayoristas
+          </FiltroPedido>
+          <FiltroPedido
+            activo={filtro === 'minorista'}
+            onClick={() => setFiltro('minorista')}
+          >
+            Minoristas
+          </FiltroPedido>
+          <FiltroPedido
+            activo={filtro === 'registrados'}
+            onClick={() => setFiltro('registrados')}
+          >
+            Registrados
+          </FiltroPedido>
+          <FiltroPedido
+            activo={filtro === 'manuales'}
+            onClick={() => setFiltro('manuales')}
+          >
+            Manuales
+          </FiltroPedido>
+        </div>
+
+        {cargando ? (
+          <div className="vacio">
+            <RefreshCw size={30} />
+            <p>Cargando clientes...</p>
+          </div>
+        ) : clientesFiltrados.length === 0 ? (
+          <div className="vacio">
+            <div className="vacio-icono">
+              <Users size={30} />
+            </div>
+            <h3>
+              No hay clientes
+            </h3>
+            <p>
+              Los clientes que se registren en el portal
+              o que cargues aparecerán aquí.
+            </p>
+          </div>
+        ) : (
+          <div className="lista-configuracion">
+            {clientesFiltrados.map((cliente) => {
+              const cantidadPedidos = pedidosDelCliente(cliente).length
+
+              return (
+                <div
+                  className="configuracion-item"
+                  key={cliente.id}
+                  onClick={() => setSeleccionado(cliente)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="configuracion-icono">
+                    <Users size={20} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <strong>
+                      {cliente.nombre}
+                    </strong>
+                    <span>
+                      {cliente.email || 'Sin email'}
+                      {cliente.telefono
+                        ? ` · ${cliente.telefono}`
+                        : ''}
+                      {cliente.auth_user_id
+                        ? ' · Registrado'
+                        : ''}
+                    </span>
+                    <small>
+                      {formatearFecha(cliente.created_at)}
+                    </small>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                      gap: '6px'
+                    }}
+                  >
+                    <span
+                      className={
+                        cliente.tipo_cliente === 'mayorista'
+                          ? 'chip-tipo mayorista'
+                          : 'chip-tipo'
+                      }
+                    >
+                      {cliente.tipo_cliente === 'mayorista'
+                        ? 'Mayorista'
+                        : 'Minorista'}
+                    </span>
+                    <small>
+                      {cantidadPedidos} pedidos
+                    </small>
+                    {cliente.tipo_cliente !== 'mayorista' && (
+                      <button
+                        type="button"
+                        className="hacer-mayorista"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          cambiarTipo(cliente, 'mayorista')
+                        }}
+                      >
+                        Hacer mayorista
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+      </section>
+    </>
   )
 }
 
@@ -1498,7 +2138,8 @@ useEffect(() => {
           telefono: cliente.telefono,
           email: cliente.email
         },
-        items
+        items,
+        origen: 'admin'
       })
 
       alert('Pedido creado correctamente.')
@@ -2456,6 +3097,10 @@ function PedidoDetalle({
         <EstadoPedido
           estado={estado}
         />
+
+        <OrigenPedido
+          origen={pedido.origen}
+        />
       </header>
 
       <section className="panel detalle-panel">
@@ -3049,6 +3694,58 @@ function PedidoDetalle({
    ESTADO
    ============================================================ */
 
+function OrigenPedido({
+  origen
+}) {
+
+  const nombres = {
+
+    web:
+      '🌐 Web',
+
+    whatsapp:
+      '💬 WhatsApp',
+
+    admin:
+      '👤 Admin'
+
+  }
+
+  if (!origen || origen === 'web') {
+    return null
+  }
+
+  return (
+
+    <small
+      style={{
+        display:
+          'inline-block',
+        padding:
+          '5px 9px',
+        borderRadius:
+          '20px',
+        background:
+          origen === 'whatsapp'
+            ? '#e8f5e9'
+            : '#e3f2fd',
+        whiteSpace:
+          'nowrap',
+        marginLeft:
+          '6px'
+      }}
+    >
+
+      {nombres[
+        origen
+      ] ||
+        origen}
+
+    </small>
+
+  )
+}
+
 function EstadoPedido({
   estado
 }) {
@@ -3185,6 +3882,69 @@ function Productos({
   ] = useState(false)
 
   const [costo, setCosto] = useState('')
+
+  const [proveedorInfo, setProveedorInfo] = useState({})
+
+  useEffect(() => {
+    let activo = true
+
+    async function cargarProveedoresDeProductos() {
+      const [respuestaRelaciones, respuestaProveedores] =
+        await Promise.all([
+          supabase
+            .from('producto_proveedores')
+            .select(
+              'producto_id, proveedor_id, precio_compra, disponible, es_principal'
+            ),
+          supabase
+            .from('proveedores')
+            .select('id, nombre, activo')
+        ])
+
+      if (!activo) return
+
+      if (respuestaRelaciones.error || respuestaProveedores.error) {
+        console.error(
+          'Error cargando proveedores de productos:',
+          respuestaRelaciones.error || respuestaProveedores.error
+        )
+        return
+      }
+
+      const nombres = {}
+      for (const proveedor of respuestaProveedores.data || []) {
+        nombres[proveedor.id] = proveedor
+      }
+
+      const mapa = {}
+      for (const relacion of respuestaRelaciones.data || []) {
+        const proveedor = nombres[relacion.proveedor_id]
+        if (!proveedor || !proveedor.activo) continue
+
+        const existente = mapa[relacion.producto_id]
+
+        if (
+          !existente ||
+          (relacion.es_principal && !existente.es_principal)
+        ) {
+          mapa[relacion.producto_id] = {
+            proveedor: proveedor.nombre,
+            precio_compra: relacion.precio_compra,
+            disponible: relacion.disponible,
+            es_principal: relacion.es_principal
+          }
+        }
+      }
+
+      setProveedorInfo(mapa)
+    }
+
+    cargarProveedoresDeProductos()
+
+    return () => {
+      activo = false
+    }
+  }, [])
 
   function avisar(texto) {
     setMensaje(texto)
@@ -3988,6 +4748,10 @@ function Productos({
                   Categoría
                 </div>
 
+                <div className="celda-proveedor">
+                  Proveedor
+                </div>
+
                 <div className="celda-precio">
                   Precio
                 </div>
@@ -4154,6 +4918,75 @@ function Productos({
                         <span>
                           {categoria?.nombre ||
                             'Sin categoría'}
+                        </span>
+
+                      )}
+
+                    </div>
+
+                    <div className="celda-proveedor">
+
+                      {proveedorInfo[producto.id] ? (
+
+                        <>
+
+                          <strong>
+                            {
+                              proveedorInfo[
+                                producto.id
+                              ].proveedor
+                            }
+                          </strong>
+
+                          {proveedorInfo[
+                            producto.id
+                          ].precio_compra !== null &&
+                          proveedorInfo[
+                            producto.id
+                          ].precio_compra !==
+                            undefined ? (
+
+                            <span>
+                              Compra: $
+                              {Number(
+                                proveedorInfo[
+                                  producto.id
+                                ].precio_compra
+                              ).toLocaleString(
+                                'es-UY'
+                              )}
+                            </span>
+
+                          ) : (
+
+                            <span className="sin-costo-texto">
+                              Sin precio
+                            </span>
+
+                          )}
+
+                          <small
+                            className={
+                              proveedorInfo[
+                                producto.id
+                              ].disponible
+                                ? 'positivo'
+                                : 'negativo'
+                            }
+                          >
+                            {proveedorInfo[
+                              producto.id
+                            ].disponible
+                              ? 'Disponible'
+                              : 'No disponible'}
+                          </small>
+
+                        </>
+
+                      ) : (
+
+                        <span className="secundario">
+                          —
                         </span>
 
                       )}
@@ -6635,6 +7468,80 @@ function ProductoDetalle({
     setPersonalizaciones
   ] = useState([])
 
+  const [
+    relacionesProveedor,
+    setRelacionesProveedor
+  ] = useState([])
+
+  const [
+    cargandoRelaciones,
+    setCargandoRelaciones
+  ] = useState(true)
+
+  const [
+    comparacion,
+    setComparacion
+  ] = useState(null)
+
+  const [
+    cargandoComparacion,
+    setCargandoComparacion
+  ] = useState(false)
+
+  const [
+    errorComparacion,
+    setErrorComparacion
+  ] = useState('')
+
+  async function cargarRelaciones() {
+
+    const { data, error } = await supabase
+      .from('producto_proveedores')
+      .select(`
+        *,
+        proveedores (
+          nombre
+        )
+      `)
+      .eq('producto_id', producto.id)
+      .order('es_principal', { ascending: false })
+
+    if (error) {
+      console.error('Error cargando proveedores del producto:', error)
+      setCargandoRelaciones(false)
+      return
+    }
+
+    setRelacionesProveedor(data || [])
+    setCargandoRelaciones(false)
+  }
+
+  useEffect(() => {
+    cargarRelaciones()
+  }, [producto.id])
+
+  async function cargarComparacion() {
+
+    setCargandoComparacion(true)
+    setErrorComparacion('')
+
+    const { data, error } = await supabase.rpc(
+      'mejor_precio_producto',
+      { p_producto_id: producto.id }
+    )
+
+    setCargandoComparacion(false)
+
+    if (error) {
+      console.error('Error comparando proveedores:', error)
+      setErrorComparacion(error.message || 'No se pudo comparar.')
+      setComparacion(null)
+      return
+    }
+
+    setComparacion(data || [])
+  }
+
 
   async function cargarPersonalizaciones() {
 
@@ -6795,14 +7702,46 @@ function ProductoDetalle({
 
               <strong>
 
-                $
-                {Number(
-                  producto.precio_costo ||
-                  0
-                ).toLocaleString(
-                  'es-UY'
+                {producto.precio_costo !== null &&
+                producto.precio_costo !==
+                  undefined ? (
+                  <>
+
+                    $
+                    {Number(
+                      producto.precio_costo
+                    ).toLocaleString(
+                      'es-UY'
+                    )}
+
+                  </>
+                ) : (
+
+                  <span className="sin-costo-texto">
+                    Sin precio
+                  </span>
+
                 )}
 
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Proveedor principal
+              </span>
+
+              <strong>
+                {relacionesProveedor.find(
+                  (relacion) =>
+                    relacion.es_principal
+                )?.proveedores?.nombre ||
+                  relacionesProveedor[0]
+                    ?.proveedores?.nombre ||
+                  'Sin proveedor'}
               </strong>
 
             </div>
@@ -6971,6 +7910,431 @@ function ProductoDetalle({
           </p>
 
         </div>
+
+      </section>
+
+
+      <section className="panel detalle-panel">
+
+        <div className="panel-header">
+
+          <div>
+
+            <h2>
+              Proveedores
+            </h2>
+
+            <p>
+              Proveedores que ofrecen este producto
+              y sus precios de compra.
+            </p>
+
+          </div>
+
+          <button
+            className="crear"
+            type="button"
+            disabled={cargandoComparacion}
+            onClick={cargarComparacion}
+          >
+
+            <GitCompareArrows size={18} />
+
+            {cargandoComparacion
+              ? 'Comparando...'
+              : 'Comparar proveedores'}
+
+          </button>
+
+        </div>
+
+        {cargandoRelaciones ? (
+
+          <div className="cargando">
+            Cargando proveedores...
+          </div>
+
+        ) : relacionesProveedor.length === 0 ? (
+
+          <div className="vacio">
+
+            <div className="vacio-icono">
+              <Truck size={30} />
+            </div>
+
+            <h3>
+              Sin proveedores relacionados
+            </h3>
+
+            <p>
+              Este producto todavía no está
+              vinculado a ningún proveedor.
+            </p>
+
+          </div>
+
+        ) : (
+
+          <div className="detalle-tabla-contenedor">
+
+            <div className="detalle-tabla productos-proveedor">
+
+              <div className="detalle-tabla-cabecera">
+
+                <div>Proveedor</div>
+                <div>Código prov.</div>
+                <div>Precio compra</div>
+                <div>Moneda</div>
+                <div>Disponible</div>
+                <div>Principal</div>
+                <div>Mínimo</div>
+                <div>Entrega</div>
+
+              </div>
+
+              {relacionesProveedor.map((relacion) => (
+
+                <div
+                  className="detalle-tabla-fila"
+                  key={relacion.id}
+                >
+
+                  <div>
+                    <strong>
+                      {relacion.proveedores?.nombre ||
+                        'Proveedor'}
+                    </strong>
+                  </div>
+
+                  <div className="secundario">
+                    {relacion.codigo_proveedor ||
+                      '—'}
+                  </div>
+
+                  <div>
+                    {relacion.precio_compra !==
+                      null &&
+                    relacion.precio_compra !==
+                      undefined ? (
+                      <>
+
+                        $
+                        {Number(
+                          relacion.precio_compra
+                        ).toLocaleString(
+                          'es-UY'
+                        )}
+
+                      </>
+                    ) : (
+
+                      <span className="sin-costo-texto">
+                        Sin precio
+                      </span>
+
+                    )}
+                  </div>
+
+                  <div className="secundario">
+                    {relacion.moneda || 'UYU'}
+                  </div>
+
+                  <div
+                    className={
+                      relacion.disponible
+                        ? 'positivo'
+                        : 'negativo'
+                    }
+                  >
+                    {relacion.disponible
+                      ? 'Sí'
+                      : 'No'}
+                  </div>
+
+                  <div>
+                    {relacion.es_principal ? (
+
+                      <span className="chip-tipo mayorista">
+                        Principal
+                      </span>
+
+                    ) : (
+
+                      <span className="secundario">
+                        —
+                      </span>
+
+                    )}
+                  </div>
+
+                  <div className="secundario">
+                    {relacion.cantidad_minima !==
+                      null &&
+                    relacion.cantidad_minima !==
+                      undefined
+                      ? Number(
+                          relacion.cantidad_minima
+                        ).toLocaleString('es-UY')
+                      : '—'}
+                  </div>
+
+                  <div className="secundario">
+                    {relacion.tiempo_entrega ||
+                      '—'}
+                  </div>
+
+                </div>
+
+              ))}
+
+            </div>
+
+          </div>
+
+        )}
+
+        {cargandoComparacion && (
+
+          <div className="cargando">
+            Consultando precios de proveedores...
+          </div>
+
+        )}
+
+        {errorComparacion && !cargandoComparacion && (
+
+          <div className="vacio">
+
+            <div className="vacio-icono">
+              <Truck size={30} />
+            </div>
+
+            <h3>
+              No se pudo comparar
+            </h3>
+
+            <p>
+              {errorComparacion}
+            </p>
+
+          </div>
+
+        )}
+
+        {comparacion &&
+          !cargandoComparacion &&
+          !errorComparacion &&
+          (comparacion.length === 0 ||
+            comparacion.every(
+              (proveedor) =>
+                proveedor.precio_actual ===
+                  null ||
+                proveedor.precio_actual ===
+                  undefined
+            )) && (
+
+          <div className="vacio">
+
+            <div className="vacio-icono">
+              <Truck size={30} />
+            </div>
+
+            <h3>
+              No hay precios disponibles
+            </h3>
+
+            <p>
+              Ningún proveedor tiene precio de
+              compra cargado para este producto.
+            </p>
+
+          </div>
+
+        )}
+
+        {comparacion &&
+          !cargandoComparacion &&
+          !errorComparacion &&
+          comparacion.some(
+            (proveedor) =>
+              proveedor.precio_actual !==
+                null &&
+              proveedor.precio_actual !==
+                undefined
+          ) && (
+
+          <div className="detalle-tabla-contenedor">
+
+            <div className="detalle-tabla comparacion">
+
+              <div className="detalle-tabla-cabecera">
+
+                <div>Proveedor</div>
+                <div>Precio actual</div>
+                <div>Último pagado</div>
+                <div>Fecha precio</div>
+                <div>Disponible</div>
+                <div>Principal</div>
+                <div>Mejor precio</div>
+                <div>Diferencia</div>
+
+              </div>
+
+              {comparacion.map((proveedor) => (
+
+                <div
+                  className={
+                    'detalle-tabla-fila' +
+                    (proveedor.es_mejor
+                      ? ' mejor-precio'
+                      : '')
+                  }
+                  key={proveedor.proveedor_id}
+                >
+
+                  <div>
+                    <strong>
+                      {proveedor.proveedor_nombre}
+                    </strong>
+                  </div>
+
+                  <div>
+                    {proveedor.precio_actual !==
+                      null &&
+                    proveedor.precio_actual !==
+                      undefined ? (
+                      <>
+
+                        $
+                        {Number(
+                          proveedor.precio_actual
+                        ).toLocaleString('es-UY')}
+
+                      </>
+                    ) : (
+
+                      <span className="sin-costo-texto">
+                        Sin precio
+                      </span>
+
+                    )}
+                  </div>
+
+                  <div className="secundario">
+                    {proveedor.ultimo_pagado !==
+                      null &&
+                    proveedor.ultimo_pagado !==
+                      undefined ? (
+                      <>
+
+                        $
+                        {Number(
+                          proveedor.ultimo_pagado
+                        ).toLocaleString('es-UY')}
+
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </div>
+
+                  <div className="secundario">
+                    {formatearFecha(
+                      proveedor.fecha_precio
+                    )}
+                  </div>
+
+                  <div
+                    className={
+                      proveedor.disponible
+                        ? 'positivo'
+                        : 'negativo'
+                    }
+                  >
+                    {proveedor.disponible
+                      ? 'Sí'
+                      : 'No'}
+                  </div>
+
+                  <div>
+                    {proveedor.es_principal ? (
+
+                      <span className="chip-tipo mayorista">
+                        Principal
+                      </span>
+
+                    ) : (
+
+                      <span className="secundario">
+                        —
+                      </span>
+
+                    )}
+                  </div>
+
+                  <div>
+                    {proveedor.es_mejor ? (
+
+                      <span className="badge-mejor-precio">
+                        Mejor precio
+                      </span>
+
+                    ) : proveedor.precio_actual !==
+                        null &&
+                      proveedor.precio_actual !==
+                        undefined ? (
+
+                      <span className="secundario">
+                        No
+                      </span>
+
+                    ) : (
+
+                      <span className="secundario">
+                        —
+                      </span>
+
+                    )}
+                  </div>
+
+                  <div>
+                    {proveedor.es_mejor ? (
+
+                      <span className="secundario">
+                        —
+                      </span>
+
+                    ) : proveedor.diferencia_vs_mejor !==
+                        null &&
+                      proveedor.diferencia_vs_mejor !==
+                        undefined ? (
+
+                      <span className="badge-mas-caro">
+                        $
+                        {Number(
+                          proveedor.diferencia_vs_mejor
+                        ).toLocaleString('es-UY')}{' '}
+                        más
+                      </span>
+
+                    ) : (
+
+                      <span className="secundario">
+                        —
+                      </span>
+
+                    )}
+                  </div>
+
+                </div>
+
+              ))}
+
+            </div>
+
+          </div>
+
+        )}
 
       </section>
 

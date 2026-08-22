@@ -7,6 +7,8 @@ import { supabase } from './supabase'
 export const RECARGO_NOMBRE_TEXTO = 2
 export const RECARGO_BOLSITA = 30
 
+export const ORIGENES_PEDIDO = ['web', 'whatsapp', 'admin']
+
 export const TAMANO_MAX_ARCHIVO = 5 * 1024 * 1024
 export const TIPOS_ARCHIVO_PERMITIDOS = [
   'image/png',
@@ -142,14 +144,13 @@ export function calcularRecargoItem(item, tipo) {
 
 /* ============================================================
    CREACIÓN DE PEDIDO
-   Escribe el pedido completo usando las tablas reales:
-   - pedidos
-   - pedido_detalles
-   - pedido_personalizaciones
-   - pedido_respuestas
-   - pedido_archivos (+ Storage bucket pedido-archivos)
-   - historial_pedidos (estado inicial)
-   Si algo falla, elimina el pedido huérfano antes de propagar el error.
+   La transacción completa (pedidos, pedido_detalles,
+   pedido_personalizaciones, pedido_respuestas, historial_pedidos)
+   vive en la RPC crear_pedido() del servidor: UNA sola llamada,
+   cualquier fallo revierte todo sin dejar huérfanos.
+   Los archivos se suben a Storage DESPUÉS de la RPC, con los ids
+   reales del pedido y del detalle. Si la subida falla, el pedido
+   ya existe y se informa el error.
    ============================================================ */
 
 function validarItems(items, tipo) {
@@ -195,9 +196,13 @@ function validarItems(items, tipo) {
   return null
 }
 
-export async function crearPedido({ cliente, items, tipo }) {
+export async function crearPedido({ cliente, items, tipo, origen = 'web' }) {
   if (!cliente?.nombre?.trim()) {
     throw new Error('Ingresá el nombre del cliente.')
+  }
+
+  if (!ORIGENES_PEDIDO.includes(origen)) {
+    throw new Error(`Origen de pedido inválido: "${origen}".`)
   }
 
   const errorValidacion = validarItems(items, tipo)
@@ -205,352 +210,227 @@ export async function crearPedido({ cliente, items, tipo }) {
     throw new Error(errorValidacion)
   }
 
-  const subtotal = items.reduce(
-    (total, item) => total + calcularSubtotalItem(item, tipo),
-    0
-  )
+  const { data, error } = await supabase.rpc('crear_pedido', {
+    p_cliente_nombre: cliente.nombre.trim(),
+    p_cliente_telefono: cliente.telefono?.trim() || null,
+    p_cliente_email: cliente.email?.trim().toLowerCase() || null,
+    p_cliente_id: cliente.clienteId || cliente.id || null,
+    p_origen: origen,
+    p_tipo: tipo || null,
+    p_items: (items || []).map((item) => ({
+      producto_id: item.producto.id,
+      variante_id: item.variante?.id ?? null,
+      cantidad: Math.max(1, Number(item.cantidad) || 1),
+      detalle: item.detalleActivo ? (item.detalle || '').trim() : null,
+      nombre_activo: Boolean(item.nombreActivo),
+      nombre: (item.nombre || '').trim(),
+      bolsita_activo: Boolean(item.bolsitaActivo),
+      respuestas: (item.respuestas || []).map((respuesta) => ({
+        pregunta_id: respuesta.preguntaId,
+        tipo: respuesta.tipo,
+        valor_texto: respuesta.valorTexto ?? null,
+        valor_booleano: respuesta.valorBooleano ?? null,
+        valor_numero: respuesta.valorNumero ?? null,
+        opcion_id: respuesta.opcionId ?? null
+      }))
+    }))
+  })
 
-  const recargos = items.reduce(
-    (total, item) => total + calcularRecargoItem(item, tipo),
-    0
-  )
-
-  const total = subtotal + recargos
-
-  let pedidoId = null
-  const rutasSubidas = []
-
-  try {
-    /* ==================================================
-       PEDIDO
-       ================================================== */
-
-    const { data: pedido, error: errorPedido } = await supabase
-      .from('pedidos')
-      .insert({
-        cliente_nombre: cliente.nombre.trim(),
-        cliente_telefono: cliente.telefono?.trim() || null,
-        cliente_email: cliente.email?.trim().toLowerCase() || null,
-        estado: 'nuevo',
-        subtotal,
-        recargos,
-        total
-      })
-      .select('*')
-      .single()
-
-    if (errorPedido) {
-      throw errorPedido
-    }
-
-    pedidoId = pedido.id
-
-    /* ==================================================
-       NÚMERO DE PEDIDO
-       ================================================== */
-
-    if (!pedido.numero_pedido) {
-      const { error: errorNumero } = await supabase
-        .from('pedidos')
-        .update({ numero_pedido: pedido.id })
-        .eq('id', pedido.id)
-
-      if (errorNumero) {
-        throw errorNumero
-      }
-    }
-
-    /* ==================================================
-       ESTADO INICIAL EN HISTORIAL
-       ================================================== */
-
-    const estados = await cargarEstados()
-    const estadoNuevo = estados.find((e) => e.valor === 'nuevo')
-
-    if (estadoNuevo) {
-      const { error: errorHistorial } = await supabase
-        .from('historial_pedidos')
-        .insert({
-          pedido_id: pedido.id,
-          estado_anterior_id: null,
-          estado_nuevo_id: estadoNuevo.id,
-          accion: 'Pedido creado',
-          comentario: 'El pedido se creó correctamente.'
-        })
-
-      if (errorHistorial) {
-        throw errorHistorial
-      }
-    }
-
-    /* ==================================================
-       DETALLES, PERSONALIZACIONES, RESPUESTAS Y ARCHIVOS
-       ================================================== */
-
-    for (const item of items) {
-      const productoId = item.producto.id
-      const precio = precioBaseItem(item, tipo)
-      const cantidad = Math.max(1, Number(item.cantidad) || 1)
-      const detalleTexto = item.detalleActivo ? (item.detalle || '').trim() : null
-
-      const { data: detalle, error: errorDetalle } = await supabase
-        .from('pedido_detalles')
-        .insert({
-          pedido_id: pedido.id,
-          producto_id: productoId,
-          producto_nombre: item.producto.nombre,
-          codigo_interno: item.producto.codigo_interno || null,
-          cantidad,
-          precio_unitario: precio,
-          subtotal: precio * cantidad,
-          costo_unitario: item.producto.precio_costo ?? null,
-          detalle: detalleTexto
-        })
-        .select()
-        .single()
-
-      if (errorDetalle) {
-        throw errorDetalle
-      }
-
-      /* ----- Variante ----- */
-
-      if (item.variante?.nombre) {
-        const { error: errorVariante } = await supabase
-          .from('pedido_personalizaciones')
-          .insert({
-            pedido_detalle_id: detalle.id,
-            nombre: 'Variante',
-            descripcion: 'Opción elegida por el cliente.',
-            valor_texto: item.variante.nombre,
-            recargo_porcentaje: 0,
-            recargo_fijo: 0,
-            recargo_calculado: 0
-          })
-
-        if (errorVariante) {
-          throw errorVariante
-        }
-      }
-
-      /* ----- Nombre o texto ----- */
-
-      if (item.nombreActivo && item.nombre.trim()) {
-        const recargo = precio * (RECARGO_NOMBRE_TEXTO / 100)
-
-        const { error } = await supabase
-          .from('pedido_personalizaciones')
-          .insert({
-            pedido_detalle_id: detalle.id,
-            nombre: 'Nombre o texto',
-            descripcion: 'El cliente agregó un nombre, frase o texto.',
-            valor_texto: item.nombre.trim(),
-            recargo_porcentaje: RECARGO_NOMBRE_TEXTO,
-            recargo_fijo: 0,
-            recargo_calculado: recargo * cantidad
-          })
-
-        if (error) {
-          throw error
-        }
-      }
-
-      /* ----- Detalle del diseño ----- */
-
-      if (item.detalleActivo && detalleTexto) {
-        const { error } = await supabase
-          .from('pedido_personalizaciones')
-          .insert({
-            pedido_detalle_id: detalle.id,
-            nombre: 'Detalle del diseño',
-            descripcion: 'Información proporcionada por el cliente para realizar el diseño.',
-            valor_texto: detalleTexto,
-            recargo_porcentaje: 0,
-            recargo_fijo: 0,
-            recargo_calculado: 0
-          })
-
-        if (error) {
-          throw error
-        }
-      }
-
-      /* ----- Bolsita ----- */
-
-      if (item.bolsitaActivo) {
-        const { error } = await supabase
-          .from('pedido_personalizaciones')
-          .insert({
-            pedido_detalle_id: detalle.id,
-            nombre: 'Bolsita de regalo',
-            descripcion: 'Presentación del producto en bolsita de regalo.',
-            valor_texto: 'Sí',
-            recargo_porcentaje: 0,
-            recargo_fijo: RECARGO_BOLSITA,
-            recargo_calculado: RECARGO_BOLSITA * cantidad
-          })
-
-        if (error) {
-          throw error
-        }
-      }
-
-      /* ----- Respuestas a preguntas ----- */
-
-      if (Array.isArray(item.respuestas)) {
-        for (const respuesta of item.respuestas) {
-          if (!respuesta?.preguntaId) {
-            continue
-          }
-
-          const filaRespuesta = {
-            pedido_item_id: detalle.id,
-            pregunta_id: respuesta.preguntaId
-          }
-
-          if (respuesta.tipo === 'booleano') {
-            filaRespuesta.valor_booleano = Boolean(respuesta.valorBooleano)
-          } else if (respuesta.tipo === 'numero') {
-            filaRespuesta.valor_numero = Number(respuesta.valorNumero) || null
-          } else if (respuesta.tipo === 'opcion') {
-            filaRespuesta.opcion_id = Number(respuesta.opcionId) || null
-          } else {
-            filaRespuesta.valor_texto = (respuesta.valorTexto || '').trim() || null
-          }
-
-          const { error: errorRespuesta } = await supabase
-            .from('pedido_respuestas')
-            .insert(filaRespuesta)
-
-          if (errorRespuesta) {
-            throw errorRespuesta
-          }
-        }
-      }
-
-      /* ----- Foto o imagen ----- */
-
-      if (item.imagenActivo && item.imagenArchivo) {
-        const extension = item.imagenArchivo.name.includes('.')
-          ? item.imagenArchivo.name.split('.').pop().toLowerCase()
-          : null
-
-        const rutaStorage =
-          `pedidos/${pedido.id}/detalle-${detalle.id}/${Date.now()}-${item.imagenArchivo.name}`
-
-        const { error: errorUpload } = await supabase.storage
-          .from('pedido-archivos')
-          .upload(rutaStorage, item.imagenArchivo, {
-            upsert: false,
-            contentType: item.imagenArchivo.type || 'application/octet-stream'
-          })
-
-        if (errorUpload) {
-          throw errorUpload
-        }
-
-        rutasSubidas.push(rutaStorage)
-
-        const { error: errorArchivo } = await supabase
-          .from('pedido_archivos')
-          .insert({
-            pedido_id: pedido.id,
-            pedido_detalle_id: detalle.id,
-            nombre_original: item.imagenArchivo.name,
-            ruta_storage: rutaStorage,
-            tipo_archivo: item.imagenArchivo.type || 'application/octet-stream',
-            extension,
-            tamano_bytes: item.imagenArchivo.size || 0
-          })
-
-        if (errorArchivo) {
-          throw errorArchivo
-        }
-
-        const { error: errorPersonalizacion } = await supabase
-          .from('pedido_personalizaciones')
-          .insert({
-            pedido_detalle_id: detalle.id,
-            nombre: 'Foto o imagen',
-            descripcion: 'Imagen proporcionada por el cliente.',
-            valor_texto: item.imagenArchivo.name,
-            recargo_porcentaje: 0,
-            recargo_fijo: 0,
-            recargo_calculado: 0
-          })
-
-        if (errorPersonalizacion) {
-          throw errorPersonalizacion
-        }
-      }
-    }
-
-    /* ==================================================
-       RECUPERAR PEDIDO COMPLETO
-       ================================================== */
-
-    const { data: pedidoCompleto, error: errorRecarga } = await supabase
-      .from('pedidos')
-      .select('*')
-      .eq('id', pedido.id)
-      .single()
-
-    if (errorRecarga) {
-      throw errorRecarga
-    }
-
-    return pedidoCompleto
-
-  } catch (error) {
-    if (rutasSubidas.length > 0) {
-      await supabase.storage
-        .from('pedido-archivos')
-        .remove(rutasSubidas)
-    }
-
-    if (pedidoId) {
-      const { data: detallesHuérfanos } = await supabase
-        .from('pedido_detalles')
-        .select('id')
-        .eq('pedido_id', pedidoId)
-
-      const idsDetalles = (detallesHuérfanos || []).map((d) => d.id)
-
-      if (idsDetalles.length > 0) {
-        await supabase
-          .from('pedido_archivos')
-          .delete()
-          .in('pedido_detalle_id', idsDetalles)
-
-        await supabase
-          .from('pedido_respuestas')
-          .delete()
-          .in('pedido_item_id', idsDetalles)
-
-        await supabase
-          .from('pedido_personalizaciones')
-          .delete()
-          .in('pedido_detalle_id', idsDetalles)
-      }
-
-      await supabase
-        .from('pedido_detalles')
-        .delete()
-        .eq('pedido_id', pedidoId)
-
-      await supabase
-        .from('historial_pedidos')
-        .delete()
-        .eq('pedido_id', pedidoId)
-
-      await supabase
-        .from('pedidos')
-        .delete()
-        .eq('id', pedidoId)
-    }
-
+  if (error) {
     throw error
   }
+
+  const pedido = data?.pedido
+  const detalles = data?.detalles || []
+
+  if (!pedido?.id) {
+    throw new Error('No se pudo crear el pedido.')
+  }
+
+  /* ==================================================
+     ARCHIVOS (fuera de la transacción)
+     La RPC ya creó el pedido. La subida a Storage se
+     hace con los ids reales; si falla, el pedido queda
+     creado y se informa el error del adjunto.
+     ================================================== */
+
+  let errorArchivo = null
+
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i]
+
+    if (!(item.imagenActivo && item.imagenArchivo)) {
+      continue
+    }
+
+    const detalle = detalles[i]
+
+    if (!detalle?.id) {
+      errorArchivo = errorArchivo || new Error('No se pudo asociar la imagen al pedido.')
+      continue
+    }
+
+    try {
+      const extension = item.imagenArchivo.name.includes('.')
+        ? item.imagenArchivo.name.split('.').pop().toLowerCase()
+        : null
+
+      const rutaStorage =
+        `pedidos/${pedido.id}/detalle-${detalle.id}/${Date.now()}-${item.imagenArchivo.name}`
+
+      const { error: errorUpload } = await supabase.storage
+        .from('pedido-archivos')
+        .upload(rutaStorage, item.imagenArchivo, {
+          upsert: false,
+          contentType: item.imagenArchivo.type || 'application/octet-stream'
+        })
+
+      if (errorUpload) {
+        throw errorUpload
+      }
+
+      const { error: errorArchivoRegistro } = await supabase
+        .from('pedido_archivos')
+        .insert({
+          pedido_id: pedido.id,
+          pedido_detalle_id: detalle.id,
+          nombre_original: item.imagenArchivo.name,
+          ruta_storage: rutaStorage,
+          tipo_archivo: item.imagenArchivo.type || 'application/octet-stream',
+          extension,
+          tamano_bytes: item.imagenArchivo.size || 0
+        })
+
+      if (errorArchivoRegistro) {
+        throw errorArchivoRegistro
+      }
+
+      const { error: errorPersonalizacion } = await supabase
+        .from('pedido_personalizaciones')
+        .insert({
+          pedido_detalle_id: detalle.id,
+          nombre: 'Foto o imagen',
+          descripcion: 'Imagen proporcionada por el cliente.',
+          valor_texto: item.imagenArchivo.name,
+          recargo_porcentaje: 0,
+          recargo_fijo: 0,
+          recargo_calculado: 0
+        })
+
+      if (errorPersonalizacion) {
+        throw errorPersonalizacion
+      }
+    } catch (errorItem) {
+      errorArchivo = errorArchivo || errorItem
+    }
+  }
+
+  if (errorArchivo) {
+    console.error('Pedido creado, pero falló la subida de imagen:', errorArchivo)
+    throw new Error(
+      'El pedido se creó correctamente, pero la imagen no se pudo subir. Podés adjuntarla más tarde desde el detalle del pedido.'
+    )
+  }
+
+  return pedido
+}
+
+/* ============================================================
+   STOCK
+   ============================================================ */
+
+export async function validarStockDisponible(items) {
+  const productosIds = []
+  const variantesIds = []
+
+  for (const item of items || []) {
+    const productoId = Number(item?.producto?.id)
+    if (Number.isFinite(productoId) && productoId > 0) {
+      productosIds.push(productoId)
+    }
+
+    const varianteId = Number(item?.variante?.id)
+    if (Number.isFinite(varianteId) && varianteId > 0) {
+      variantesIds.push(varianteId)
+    }
+  }
+
+  if (productosIds.length === 0) {
+    return []
+  }
+
+  const [respuestaProductos, respuestaVariantes] = await Promise.all([
+    supabase
+      .from('productos')
+      .select('id, nombre, nombre_comercial, stock')
+      .in('id', productosIds),
+
+    variantesIds.length > 0
+      ? supabase
+          .from('producto_variantes')
+          .select('id, producto_id, nombre, stock')
+          .in('id', variantesIds)
+      : Promise.resolve({ data: [], error: null })
+  ])
+
+  if (respuestaProductos.error) {
+    throw respuestaProductos.error
+  }
+
+  if (respuestaVariantes.error) {
+    throw respuestaVariantes.error
+  }
+
+  const stockPorProducto = new Map(
+    (respuestaProductos.data || []).map((p) => [p.id, p])
+  )
+  const stockPorVariante = new Map(
+    (respuestaVariantes.data || []).map((v) => [v.id, v])
+  )
+
+  return (items || []).map((item) => {
+    const productoId = Number(item?.producto?.id)
+    const varianteId = Number(item?.variante?.id)
+    const solicitado = Math.max(1, Number(item?.cantidad) || 1)
+
+    const stockProducto = stockPorProducto.get(productoId)
+    const stockVariante =
+      Number.isFinite(varianteId) && varianteId > 0
+        ? stockPorVariante.get(varianteId)
+        : null
+
+    const disponibleEnVariante =
+      stockVariante?.stock === null ||
+      stockVariante?.stock === undefined
+        ? null
+        : Number(stockVariante.stock)
+
+    const disponibleEnProducto =
+      stockProducto?.stock === null ||
+      stockProducto?.stock === undefined
+        ? null
+        : Number(stockProducto.stock)
+
+    const stockEfectivo =
+      disponibleEnVariante !== null
+        ? disponibleEnVariante
+        : disponibleEnProducto
+
+    return {
+      productoId,
+      nombre:
+        stockProducto?.nombre_comercial ||
+        stockProducto?.nombre ||
+        item?.producto?.nombre ||
+        'Producto sin nombre',
+      varianteId: Number.isFinite(varianteId) && varianteId > 0 ? varianteId : null,
+      varianteNombre: stockVariante?.nombre || item?.variante?.nombre || null,
+      solicitado,
+      disponible: stockEfectivo,
+      stockDefinido: stockEfectivo !== null,
+      ok: stockEfectivo === null || stockEfectivo >= solicitado
+    }
+  })
 }
 
 /* ============================================================

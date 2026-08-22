@@ -50,7 +50,21 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
     let consulta = supabase
       .from('productos')
       .select(`
-        *,
+        id,
+        nombre,
+        nombre_comercial,
+        descripcion,
+        imagen_principal,
+        precio,
+        precio_publico,
+        precio_publico_sugerido,
+        precio_mayorista,
+        precio_mayorista_sugerido,
+        stock,
+        permite_personalizacion,
+        categoria_id,
+        orden,
+        codigo_interno,
         categorias (
           id,
           nombre
@@ -456,6 +470,13 @@ function TarjetaProducto({
   abrir
 }) {
   const precio = obtenerPrecio(producto, tipo)
+  const precioMinorista =
+    tipo === 'mayorista'
+      ? obtenerPrecio(producto, 'minorista')
+      : null
+  const mostrarReferencia =
+    precioMinorista !== null &&
+    precioMinorista !== precio
 
   return (
     <div
@@ -503,11 +524,21 @@ function TarjetaProducto({
           {precio !== null ? (
 
             <>
-              <small>Precio</small>
+              <small>
+                {tipo === 'mayorista'
+                  ? 'Precio mayorista'
+                  : 'Precio'}
+              </small>
 
               <strong>
                 $ {formatearPrecio(precio)}
               </strong>
+
+              {mostrarReferencia && (
+                <span className="precio-referencia">
+                  Minorista: $ {formatearPrecio(precioMinorista)}
+                </span>
+              )}
             </>
 
           ) : (
@@ -561,7 +592,7 @@ function DetalleCliente({
     const [respuestaVariantes, respuestaPreguntas] = await Promise.all([
       supabase
         .from('producto_variantes')
-        .select('*')
+        .select('id, producto_id, nombre, precio, stock, activo')
         .eq('producto_id', producto.id)
         .eq('activo', true)
         .order('id'),
@@ -608,6 +639,15 @@ useEffect(() => {
     Number(variante?.precio) > 0
       ? Number(variante.precio)
       : obtenerPrecio(producto, tipo)
+
+  const precioMinorista =
+    tipo === 'mayorista'
+      ? obtenerPrecio(producto, 'minorista')
+      : null
+
+  const mostrarPrecioMinorista =
+    precioMinorista !== null &&
+    precioMinorista !== precio
 
   const cantidadNumero = Math.max(1, Number(cantidad) || 1)
   const subtotal = (precio || 0) * cantidadNumero
@@ -737,10 +777,12 @@ useEffect(() => {
         cliente: {
           nombre: cliente?.nombre,
           telefono: cliente?.telefono,
-          email: cliente?.email
+          email: cliente?.email,
+          clienteId: cliente?.id
         },
         items,
-        tipo
+        tipo,
+        origen: 'web'
       })
 
       onPedidoCreado(pedido)
@@ -828,6 +870,13 @@ useEffect(() => {
                 <strong>
                   $ {formatearPrecio(precio)}
                 </strong>
+
+                {mostrarPrecioMinorista && (
+                  <span className="precio-referencia">
+                    Precio minorista: $
+                    {formatearPrecio(precioMinorista)}
+                  </span>
+                )}
               </>
 
             ) : (
