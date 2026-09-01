@@ -1,0 +1,27 @@
+name: Keep Supabase alive
+
+on:
+  schedule:
+    # Corre cada 6 horas todos los días. GitHub lo ejecuta en sus servidores,
+    # así no depende de que tu PC esté encendida.
+    - cron: '17 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar catálogo público (actividad en la base)
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "apikey: sb_publishable_YoBME_jGQwh5PqA3MEpLSQ_McDkWJQd" \
+            -H "Authorization: Bearer sb_publishable_YoBME_jGQwh5PqA3MEpLSQ_McDkWJQd" \
+            -H "Content-Type: application/json" \
+            -d '{"p_limite":1}' \
+            https://tshlfodrxpstemecdovv.supabase.co/rest/v1/rpc/catalogo_publico)
+          echo "Supabase respondió HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::La base de datos no respondió correctamente"
+            exit 1
+          fi
