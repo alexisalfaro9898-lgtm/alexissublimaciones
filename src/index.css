@@ -1428,6 +1428,16 @@ nav {
   border-color: #f3cbcb;
 }
 
+.accion-icono.activa-mockup {
+  background: #eef6ff;
+  color: #2563eb;
+  border-color: #bcd3f7;
+}
+
+.accion-icono.activa-mockup:hover {
+  background: #e0efff;
+}
+
 .seleccion-barra {
   position: sticky;
   bottom: 16px;

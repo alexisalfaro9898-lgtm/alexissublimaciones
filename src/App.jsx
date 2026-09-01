@@ -30,7 +30,9 @@ import {
   LayoutGrid,
   List,
   GitCompareArrows,
-  BarChart3
+  BarChart3,
+  Sparkles,
+  ImageOff
 } from 'lucide-react'
 
 import { supabase } from './lib/supabase'
@@ -4821,7 +4823,11 @@ function Productos({
                         >
                           {producto.imagen_principal ? (
                             <img
-                              src={producto.imagen_principal}
+                              src={
+                                producto.usa_mockup
+                                  ? (producto.imagen_mockup || producto.imagen_principal)
+                                  : (producto.imagen_original || producto.imagen_principal)
+                              }
                               alt={nombreProducto(producto)}
                             />
                           ) : (
@@ -5179,7 +5185,11 @@ function Productos({
 
                       {producto.imagen_principal ? (
                         <img
-                          src={producto.imagen_principal}
+                          src={
+                            producto.usa_mockup
+                              ? (producto.imagen_mockup || producto.imagen_principal)
+                              : (producto.imagen_original || producto.imagen_principal)
+                          }
                           alt={nombreProducto(producto)}
                           loading="lazy"
                           onClick={() =>
@@ -5236,6 +5246,35 @@ function Productos({
                           }
                         >
                           <Pencil size={16} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className={
+                            'accion-icono' +
+                            (producto.usa_mockup && producto.imagen_mockup
+                              ? ' activa-mockup'
+                              : '')
+                          }
+                          title={
+                            producto.usa_mockup && producto.imagen_mockup
+                              ? 'Mostrando mockup. Clic para ver original'
+                              : 'Mostrando original. Clic para ver mockup'
+                          }
+                          onClick={() =>
+                            guardarCampo(
+                              producto,
+                              {
+                                usa_mockup:
+                                  !producto.usa_mockup
+                              },
+                              'usa_mockup'
+                            )
+                          }
+                        >
+                          {producto.usa_mockup && producto.imagen_mockup
+                            ? <Sparkles size={16} />
+                            : <ImageOff size={16} />}
                         </button>
 
                         <button
@@ -7638,7 +7677,9 @@ function ProductoDetalle({
 
             <img
               src={
-                producto.imagen_principal
+                producto.usa_mockup
+                  ? (producto.imagen_mockup || producto.imagen_principal)
+                  : (producto.imagen_original || producto.imagen_principal)
               }
               alt={
                 nombreProducto(producto)
