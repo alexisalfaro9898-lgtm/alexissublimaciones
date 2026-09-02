@@ -90,7 +90,7 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
               (nuevo) =>
                 !actuales.some(
                   (actual) =>
-                    actual.familia === nuevo.familia
+                    actual.modelo === nuevo.modelo
                 )
             )
           ]
@@ -129,8 +129,8 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
     setVariaciones([])
 
     const { data, error } = await supabase
-      .rpc('variaciones_familia', {
-        p_familia: familia.familia,
+      .rpc('variaciones_modelo', {
+        p_modelo: familia.modelo,
         p_categoria_id: familia.categoria_id ?? null
       })
 
@@ -152,7 +152,7 @@ useEffect(() => {
   }, [])
 
   const familiasFiltradas = familias.filter((familia) =>
-    familia.familia
+    (familia.nombre_familia || familia.modelo)
       .toLowerCase()
       .includes(busqueda.toLowerCase())
   )
@@ -258,7 +258,7 @@ useEffect(() => {
                         ← Volver al catálogo
                       </button>
                       <h2>
-                        {familiaSeleccionada.familia}
+                        {familiaSeleccionada.nombre_familia || familiaSeleccionada.modelo}
                       </h2>
                       <p>
                         Elegí la variante que querés personalizar.
@@ -374,7 +374,7 @@ useEffect(() => {
                 <div className="catalogo-grid">
                   {familiasFiltradas.map((familia) => (
                     <TarjetaFamilia
-                      key={familia.familia}
+                      key={familia.modelo || familia.nombre_familia}
                       familia={familia}
                       tipo={tipo}
                       abrir={() => abrirFamilia(familia)}
@@ -483,7 +483,7 @@ function TarjetaFamilia({
 
           <img
             src={familia.imagen_principal}
-            alt={familia.familia}
+            alt={familia.nombre_familia || familia.modelo}
           />
 
         ) : (
@@ -506,7 +506,7 @@ function TarjetaFamilia({
         </span>
 
         <h3>
-          {familia.familia}
+          {familia.nombre_familia || familia.modelo}
         </h3>
 
         <div className="catalogo-producto-precio">

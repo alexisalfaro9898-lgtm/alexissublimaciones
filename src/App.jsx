@@ -493,7 +493,6 @@ async function cargarCategorias() {
         {pagina === 'Inicio' && (
 
           <Dashboard
-            categorias={categorias}
             onNuevoPedido={() =>
               setPagina('NuevoPedido')
             }
@@ -655,7 +654,6 @@ async function cargarCategorias() {
    ============================================================ */
 
 function Dashboard({
-  categorias,
   onNuevoPedido
 }) {
 
@@ -850,46 +848,6 @@ useEffect(() => {
               ))}
             </div>
           )}
-
-        </div>
-
-        <div className="panel">
-
-          <div className="panel-header">
-
-            <div>
-              <h2>
-                Categorías
-              </h2>
-              <p>
-                Productos disponibles
-              </p>
-            </div>
-
-          </div>
-
-          <div className="categorias">
-
-            {categorias.map((categoria) => (
-              <div
-                className="categoria"
-                key={categoria.id}
-              >
-                <div className="categoria-icono">
-                  <Package size={20} />
-                </div>
-                <div>
-                  <strong>
-                    {categoria.nombre}
-                  </strong>
-                  <span>
-                    {categoria.descripcion}
-                  </span>
-                </div>
-              </div>
-            ))}
-
-          </div>
 
         </div>
 

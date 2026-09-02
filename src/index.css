@@ -269,7 +269,7 @@ nav {
 
 .grid-principal {
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
+  grid-template-columns: 1fr;
   gap: 22px;
 }
 
@@ -343,51 +343,6 @@ nav {
   font-size: 12px;
   line-height: 1.5;
   margin: 8px 0 18px;
-}
-
-
-/* CATEGORIAS */
-
-.categorias {
-  padding: 8px 22px;
-}
-
-.categoria {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 0;
-  border-bottom: 1px solid #f0f2f5;
-}
-
-.categoria:last-child {
-  border-bottom: 0;
-}
-
-.categoria-icono {
-  width: 38px;
-  height: 38px;
-  background: #f3f5f8;
-  color: #657184;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.categoria strong,
-.categoria span {
-  display: block;
-}
-
-.categoria strong {
-  font-size: 13px;
-}
-
-.categoria span {
-  color: #929bab;
-  font-size: 11px;
-  margin-top: 3px;
 }
 
 
