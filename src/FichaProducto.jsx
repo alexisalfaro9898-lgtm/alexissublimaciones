@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { RECARGO_NOMBRE_TEXTO, RECARGO_BOLSITA } from './lib/pedidos'
 
+const NUMERO_WHATSAPP_NEGOCIO = '59896229819'
+
 const nombreGenerico = (nombre) =>
   (nombre || '').replace(/\s*\([^)]*\)\s*$/g, '').trim()
 
@@ -369,6 +371,17 @@ export default function FichaProducto({
           </div>
         </div>
       </section>
+
+      <a
+        className="whatsapp-flotante"
+        href={`https://wa.me/${NUMERO_WHATSAPP_NEGOCIO}?text=${encodeURIComponent('Hola, quiero consultar por un producto personalizable.')}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Consultar por WhatsApp"
+      >
+        <img src="/whatsapp.svg" alt="WhatsApp" />
+        <span>Consultar por WhatsApp</span>
+      </a>
     </div>
   )
 }

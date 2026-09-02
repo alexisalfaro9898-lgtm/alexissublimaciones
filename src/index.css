@@ -4463,3 +4463,32 @@ nav {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* Botón flotante de WhatsApp */
+.whatsapp-flotante {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  z-index: 70;
+  background: #25d366;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(37, 211, 102, 0.4);
+  transition: transform 0.15s ease;
+}
+
+.whatsapp-flotante:hover {
+  transform: translateY(-2px);
+}
+
+.whatsapp-flotante img {
+  width: 22px;
+  height: 22px;
+}
