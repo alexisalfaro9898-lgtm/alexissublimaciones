@@ -4323,7 +4323,7 @@ function Productos({
                       e.target.value
                     )
                   }
-                  placeholder="Ej: Taza sublimable"
+                  placeholder="Ej: Taza personalizable"
                   required
                 />
 

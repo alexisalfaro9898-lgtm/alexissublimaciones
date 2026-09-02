@@ -195,7 +195,7 @@ useEffect(() => {
                   onChange={(e) =>
                     setNombre(e.target.value)
                   }
-                  placeholder="Ej: Taza sublimable"
+                  placeholder="Ej: Taza personalizable"
                   required
                   style={{
                     width: '100%',

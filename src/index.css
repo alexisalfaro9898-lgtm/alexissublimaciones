@@ -4346,3 +4346,120 @@ nav {
   color: #2563a8;
   font-weight: 600;
 }
+
+/* Logo del portal cliente */
+.portal-header-titulo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.portal-logo {
+  height: 52px;
+  width: auto;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.portal-saludo {
+  margin: 0;
+  color: #172033;
+  font-weight: 600;
+}
+
+/* Badge personalizable en tarjetas */
+.badge-personalizable {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  background: #2563a8;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+}
+
+.catalogo-producto-imagen {
+  position: relative;
+}
+
+/* Cómo funciona */
+.ficha-como-funciona {
+  background: #f3f6fb;
+  border: 1px solid #e8ebf1;
+  border-radius: 14px;
+  padding: 22px;
+  margin-top: 22px;
+}
+
+.ficha-como-funciona h2 {
+  margin: 0 0 16px;
+  font-size: 19px;
+  color: #172033;
+  text-align: center;
+}
+
+.ficha-pasos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 720px) {
+  .ficha-pasos {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ficha-paso {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid #e8ebf1;
+}
+
+.ficha-paso-num {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #e24b4b;
+  color: #fff;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ficha-paso p {
+  margin: 0;
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.ficha-destacado {
+  background: #eef6ff;
+  border: 1px solid #cfe3fb;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.ficha-destacado strong {
+  color: #1d4ed8;
+  font-size: 14px;
+}
+
+.ficha-destacado p {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}

@@ -222,6 +222,17 @@ export default function FichaProducto({
             <p className="ficha-descripcion">{producto.descripcion}</p>
           )}
 
+          {producto.permite_personalizacion !== false && (
+            <div className="ficha-destacado">
+              <strong>✓ Personalizable con tu diseño</strong>
+              <p>
+                Podés estamparle tu nombre, texto, foto o el diseño que
+                quieras. Subí tu referencia y coordinamos todo por
+                WhatsApp.
+              </p>
+            </div>
+          )}
+
           <label className="ficha-campo">
             <span>Cantidad</span>
             <input
@@ -333,6 +344,31 @@ export default function FichaProducto({
           </button>
         </div>
       </div>
+
+      <section className="ficha-como-funciona">
+        <h2>¿Cómo encargamos tu personalizado?</h2>
+        <div className="ficha-pasos">
+          <div className="ficha-paso">
+            <span className="ficha-paso-num">1</span>
+            <p>
+              Elegís el producto y el color que más te guste.
+            </p>
+          </div>
+          <div className="ficha-paso">
+            <span className="ficha-paso-num">2</span>
+            <p>
+              Agregás tu diseño, nombre o texto y lo cargás al carrito.
+            </p>
+          </div>
+          <div className="ficha-paso">
+            <span className="ficha-paso-num">3</span>
+            <p>
+              Confirmás tu pedido y coordinamos el envío o retiro por
+              WhatsApp.
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

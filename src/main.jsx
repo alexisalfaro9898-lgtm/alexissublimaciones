@@ -17,7 +17,16 @@ import {
   obtenerUrlFirmada
 } from './lib/pedidos'
 
-const nombreProducto = (p) => p?.nombre_comercial || p?.nombre
+const nombreProducto = (p) => {
+  const nombre =
+    (p?.nombre_comercial && p.nombre_comercial.trim()) ||
+    (p?.nombre && p.nombre.trim()) ||
+    ''
+  return nombre
+    .replace(/\s*\([A-Z0-9][A-Z0-9-]*\)\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 /* ============================================================
    PORTAL CLIENTE
@@ -130,6 +139,15 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
     setVistaFamilia(true)
     setCargandoVariaciones(true)
     setVariaciones([])
+    setVista('catalogo')
+    const modelo = familia.modelo || familia.nombre_familia
+    if (window.history?.state?.ruta !== `/producto/${modelo}`) {
+      window.history.pushState(
+        { ruta: `/producto/${modelo}`, modelo },
+        '',
+        `#/producto/${modelo}`
+      )
+    }
 
     const { data, error } = await supabase
       .rpc('variaciones_modelo', {
@@ -148,7 +166,7 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
   function agregarAlCarrito(item) {
     if (!item) return
     setCarrito((actuales) => [...actuales, item])
-    setMostrarCarrito(true)
+    abrirCarrito()
   }
 
   function quitarDelCarrito(indice) {
@@ -188,6 +206,7 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
       setProductoSeleccionado(null)
       setVista('misPedidos')
       setPedidoSeleccionado(pedido)
+      window.history.pushState({ ruta: '/mis-pedidos' }, '', '#/mis-pedidos')
 
     } catch (errorPedido) {
       console.error('Error creando pedido:', errorPedido)
@@ -195,18 +214,61 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
     }
   }
 
-  function irAlCarrito() {
+  function abrirCarrito() {
     setMostrarCarrito(true)
+    if (window.history?.state?.ruta !== '/carrito') {
+      window.history.pushState({ ruta: '/carrito' }, '', '#/carrito')
+    }
+  }
+
+  function cerrarCarrito() {
+    setMostrarCarrito(false)
+    if (window.history?.state?.ruta === '/carrito') {
+      window.history.back()
+    }
+  }
+
+  function irAlCarrito() {
+    abrirCarrito()
   }
 
   function volverAFamilias() {
-    setVistaFamilia(false)
-    setFamiliaSeleccionada(null)
-    setVariaciones([])
-    setProductoSeleccionado(null)
+    if (window.history?.length > 1) {
+      window.history.back()
+    } else {
+      setVistaFamilia(false)
+      setFamiliaSeleccionada(null)
+      setVariaciones([])
+      setProductoSeleccionado(null)
+    }
   }
 useEffect(() => {
     cargarCatalogo()
+
+    function manejarPopState() {
+      const ruta = window.location.hash
+
+      if (ruta.startsWith('#/producto/')) {
+        setVista('catalogo')
+        setMostrarCarrito(false)
+      } else if (ruta === '#/carrito') {
+        setMostrarCarrito(true)
+      } else if (ruta === '#/mis-pedidos') {
+        setVista('misPedidos')
+        setVistaFamilia(false)
+        setMostrarCarrito(false)
+      } else {
+        setVista('catalogo')
+        setVistaFamilia(false)
+        setFamiliaSeleccionada(null)
+        setVariaciones([])
+        setMostrarCarrito(false)
+      }
+    }
+
+    window.addEventListener('popstate', manejarPopState)
+    return () =>
+      window.removeEventListener('popstate', manejarPopState)
   }, [])
 
   const familiasFiltradas = familias.filter((familia) =>
@@ -228,12 +290,18 @@ useEffect(() => {
 
       <header className="portal-header">
 
-        <div>
-          <h1>Sistema de Pedidos</h1>
+        <div className="portal-header-titulo">
+          <img
+            src="/logo.jpg"
+            alt="Logo"
+            className="portal-logo"
+          />
 
-          <p>
-            Hola, {cliente?.nombre || 'cliente'} 👋
-          </p>
+          <div>
+            <p className="portal-saludo">
+              Hola, {cliente?.nombre || 'cliente'} 👋
+            </p>
+          </div>
         </div>
 
         <div className="portal-header-derecha">
@@ -275,7 +343,11 @@ useEffect(() => {
           }
           onClick={() => {
             setVista('catalogo')
+            setVistaFamilia(false)
             setPedidoSeleccionado(null)
+            if (window.history?.state?.ruta !== '/') {
+              window.history.pushState({ ruta: '/' }, '', '#/')
+            }
           }}
         >
           Catálogo
@@ -290,6 +362,9 @@ useEffect(() => {
           onClick={() => {
             setVista('misPedidos')
             setPedidoSeleccionado(null)
+            if (window.history?.state?.ruta !== '/mis-pedidos') {
+              window.history.pushState({ ruta: '/mis-pedidos' }, '', '#/mis-pedidos')
+            }
           }}
         >
           Mis pedidos
@@ -493,9 +568,12 @@ useEffect(() => {
                 setPedidoSeleccionado(pedido)
               }
               cerrarPedido={cerrarPedido}
-              onNuevoPedido={() =>
+              onNuevoPedido={() => {
                 setVista('catalogo')
-              }
+                if (window.history?.state?.ruta !== '/') {
+                  window.history.pushState({ ruta: '/' }, '', '#/')
+                }
+              }}
             />
           )}
 
@@ -504,7 +582,7 @@ useEffect(() => {
       {mostrarCarrito && (
         <div
           className="carrito-overlay"
-          onClick={() => setMostrarCarrito(false)}
+          onClick={cerrarCarrito}
         >
           <div
             className="carrito-panel"
@@ -514,7 +592,7 @@ useEffect(() => {
               <h2>Tu carrito</h2>
               <button
                 className="carrito-cerrar"
-                onClick={() => setMostrarCarrito(false)}
+                onClick={cerrarCarrito}
               >
                 ×
               </button>
@@ -652,6 +730,10 @@ function TarjetaFamilia({
     >
 
       <div className="catalogo-producto-imagen">
+
+        <span className="badge-personalizable">
+          Personalizable
+        </span>
 
         {familia.imagen_principal ? (
 
