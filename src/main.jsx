@@ -24,17 +24,20 @@ const nombreProducto = (p) => p?.nombre_comercial || p?.nombre
 
 function PortalCliente({ cliente, cerrarSesion, tipo }) {
   const [vista, setVista] = useState('catalogo')
-  const [productos, setProductos] = useState([])
+  const [familias, setFamilias] = useState([])
   const [categorias, setCategorias] = useState([])
   const [busqueda, setBusqueda] = useState('')
-  const [orden, setOrden] = useState('orden')
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null)
+  const [familiaSeleccionada, setFamiliaSeleccionada] = useState(null)
+  const [variaciones, setVariaciones] = useState([])
+  const [cargandoVariaciones, setCargandoVariaciones] = useState(false)
   const [productoSeleccionado, setProductoSeleccionado] = useState(null)
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [cargandoMas, setCargandoMas] = useState(false)
-  const [totalProductos, setTotalProductos] = useState(0)
+  const [totalFamilias, setTotalFamilias] = useState(0)
   const [limite, setLimite] = useState(100)
+  const [vistaFamilia, setVistaFamilia] = useState(false)
 
   async function cargarCatalogo(
     categoriaId = null,
@@ -47,47 +50,16 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
       setCargando(true)
     }
 
-    let consulta = supabase
-      .from('productos')
-      .select(`
-        id,
-        nombre,
-        nombre_comercial,
-        descripcion,
-        imagen_principal,
-        precio,
-        precio_publico,
-        precio_publico_sugerido,
-        precio_mayorista,
-        precio_mayorista_sugerido,
-        stock,
-        permite_personalizacion,
-        categoria_id,
-        orden,
-        codigo_interno,
-        categorias (
-          id,
-          nombre
-        )
-      `, { count: 'exact' })
-      .eq('activo', true)
-
-    if (categoriaId) {
-      consulta = consulta.eq(
-        'categoria_id',
-        categoriaId
-      )
-    }
-
-    consulta = consulta
-      .order('orden', { ascending: true })
-      .range(0, cuantos - 1)
-
     const [
-      respuestaProductos,
+      respuestaFamilia,
       respuestaCategorias
     ] = await Promise.all([
-      consulta,
+      supabase
+        .rpc('catalogo_agrupado', {
+          p_busqueda: busqueda || null,
+          p_categoria_id: categoriaId || null,
+          p_limite: cuantos
+        }),
 
       supabase
         .from('categorias')
@@ -96,10 +68,10 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
         .order('orden')
     ])
 
-    if (respuestaProductos.error) {
+    if (respuestaFamilia.error) {
       console.error(
-        'Error cargando productos:',
-        respuestaProductos.error
+        'Error cargando familias:',
+        respuestaFamilia.error
       )
     }
 
@@ -110,24 +82,23 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
       )
     }
 
-    setProductos((actuales) =>
+    setFamilias((actuales) =>
       agregar
         ? [
             ...actuales,
-            ...(respuestaProductos.data || []).filter(
+            ...(respuestaFamilia.data || []).filter(
               (nuevo) =>
                 !actuales.some(
                   (actual) =>
-                    actual.id === nuevo.id
+                    actual.familia === nuevo.familia
                 )
             )
           ]
-        : (respuestaProductos.data || [])
+        : (respuestaFamilia.data || [])
     )
 
-    setTotalProductos(
-      respuestaProductos.count ??
-      (respuestaProductos.data || []).length
+    setTotalFamilias(
+      (respuestaFamilia.data || []).length
     )
 
     setCategorias(respuestaCategorias.data || [])
@@ -150,46 +121,41 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
       true
     )
   }
+
+  async function abrirFamilia(familia) {
+    setFamiliaSeleccionada(familia)
+    setVistaFamilia(true)
+    setCargandoVariaciones(true)
+    setVariaciones([])
+
+    const { data, error } = await supabase
+      .rpc('variaciones_familia', {
+        p_familia: familia.familia,
+        p_categoria_id: familia.categoria_id ?? null
+      })
+
+    if (error) {
+      console.error('Error cargando variaciones:', error)
+    }
+
+    setVariaciones(data || [])
+    setCargandoVariaciones(false)
+  }
+
+  function volverAFamilias() {
+    setVistaFamilia(false)
+    setFamiliaSeleccionada(null)
+    setVariaciones([])
+  }
 useEffect(() => {
     cargarCatalogo()
   }, [])
 
-  const productosFiltrados = productos.filter((producto) => {
-    const coincideBusqueda =
-      (producto.nombre_comercial || producto.nombre)
-        ?.toLowerCase()
-        .includes(busqueda.toLowerCase())
-
-    const coincideCategoria =
-      !categoriaSeleccionada ||
-      producto.categoria_id === categoriaSeleccionada
-
-    return coincideBusqueda && coincideCategoria
-  })
-
-  const productosOrdenados = [...productosFiltrados].sort((a, b) => {
-    if (orden === 'nombre_asc') {
-      return (a.nombre_comercial || a.nombre).localeCompare(
-        b.nombre_comercial || b.nombre,
-        'es'
-      )
-    }
-    if (orden === 'nombre_desc') {
-      return (b.nombre_comercial || b.nombre).localeCompare(
-        a.nombre_comercial || a.nombre,
-        'es'
-      )
-    }
-    const pa = Number(a.precio_publico ?? a.precio ?? 0)
-    const pb = Number(b.precio_publico ?? b.precio ?? 0)
-    if (orden === 'precio_asc') {
-      return pa - pb
-    }
-    if (orden === 'precio_desc') {
-      return pb - pa
-    }
-    return 0
-  })
+  const familiasFiltradas = familias.filter((familia) =>
+    familia.familia
+      .toLowerCase()
+      .includes(busqueda.toLowerCase())
+  )
 
   function cerrarProducto() {
     setProductoSeleccionado(null)
@@ -281,6 +247,64 @@ useEffect(() => {
         {!productoSeleccionado &&
           vista === 'catalogo' && (
             <>
+              {vistaFamilia && familiaSeleccionada ? (
+                <>
+                  <section className="catalogo-titulo">
+                    <div>
+                      <button
+                        className="boton-volver-cliente"
+                        onClick={volverAFamilias}
+                      >
+                        ← Volver al catálogo
+                      </button>
+                      <h2>
+                        {familiaSeleccionada.familia}
+                      </h2>
+                      <p>
+                        Elegí la variante que querés personalizar.
+                      </p>
+                    </div>
+                    <span className="catalogo-conteo">
+                      {familiaSeleccionada.variantes}{' '}
+                      {familiaSeleccionada.variantes === 1
+                        ? 'variante'
+                        : 'variantes'}
+                    </span>
+                  </section>
+
+                  {cargandoVariaciones ? (
+                    <div className="catalogo-cargando">
+                      Cargando variantes...
+                    </div>
+                  ) : (
+                    <div className="catalogo-grid">
+                      {variaciones.map((producto) => (
+                        <TarjetaProducto
+                          key={producto.id}
+                          producto={producto}
+                          tipo={tipo}
+                          abrir={() =>
+                            setProductoSeleccionado(producto)
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {!cargandoVariaciones &&
+                    variaciones.length === 0 && (
+                      <div className="catalogo-vacio">
+                        <h3>
+                          No encontramos variantes
+                        </h3>
+                        <p>
+                          Probá con otra familia o búsqueda.
+                        </p>
+                      </div>
+                    )}
+                </>
+              ) : (
+                <>
               <section className="catalogo-titulo">
                 <div>
                   <h2>Catálogo</h2>
@@ -293,10 +317,10 @@ useEffect(() => {
                     (c) => c.id === categoriaSeleccionada
                   )?.nombre || 'Todos los productos'}
                   {' — '}
-                  {productosFiltrados.length}{' '}
-                  {productosFiltrados.length === 1
-                    ? 'producto'
-                    : 'productos'}
+                  {familiasFiltradas.length}{' '}
+                  {familiasFiltradas.length === 1
+                    ? 'familia'
+                    : 'familias'}
                 </span>
               </section>
 
@@ -309,33 +333,6 @@ useEffect(() => {
                     setBusqueda(e.target.value)
                   }
                 />
-                <div className="catalogo-orden-caja">
-                  <span>Ordenar:</span>
-                  <select
-                    className="catalogo-orden"
-                    value={orden}
-                    onChange={(e) =>
-                      setOrden(e.target.value)
-                    }
-                    aria-label="Ordenar productos"
-                  >
-                    <option value="orden">
-                      Destacados
-                    </option>
-                    <option value="nombre_asc">
-                      Nombre A-Z
-                    </option>
-                    <option value="nombre_desc">
-                      Nombre Z-A
-                    </option>
-                    <option value="precio_asc">
-                      Precio $ ↑
-                    </option>
-                    <option value="precio_desc">
-                      Precio $ ↓
-                    </option>
-                  </select>
-                </div>
               </div>
 
               <div className="catalogo-categorias">
@@ -375,21 +372,19 @@ useEffect(() => {
                 </div>
               ) : (
                 <div className="catalogo-grid">
-                  {productosOrdenados.map((producto) => (
-                    <TarjetaProducto
-                      key={producto.id}
-                      producto={producto}
+                  {familiasFiltradas.map((familia) => (
+                    <TarjetaFamilia
+                      key={familia.familia}
+                      familia={familia}
                       tipo={tipo}
-                      abrir={() =>
-                        setProductoSeleccionado(producto)
-                      }
+                      abrir={() => abrirFamilia(familia)}
                     />
                   ))}
                 </div>
               )}
 
               {!cargando &&
-                productosOrdenados.length === 0 && (
+                familiasFiltradas.length === 0 && (
                   <div className="catalogo-vacio">
                     <h3>
                       No encontramos productos
@@ -401,9 +396,9 @@ useEffect(() => {
                 )}
 
               {!cargando &&
-                productosOrdenados.length > 0 &&
-                productosOrdenados.length <
-                  totalProductos && (
+                familiasFiltradas.length > 0 &&
+                familiasFiltradas.length <
+                  totalFamilias && (
                   <div className="catalogo-mas">
                     <button
                       className="boton-ver-mas"
@@ -413,12 +408,14 @@ useEffect(() => {
                     >
                       {cargandoMas
                         ? 'Cargando...'
-                        : `Ver más productos (${
-                            productosOrdenados.length
-                          } de ${totalProductos})`}
+                        : `Ver más familias (${
+                            familiasFiltradas.length
+                          } de ${totalFamilias})`}
                     </button>
                   </div>
                 )}
+                </>
+              )}
             </>
           )}
 
@@ -457,6 +454,110 @@ function PortalMayorista({
       cerrarSesion={cerrarSesion}
       tipo="mayorista"
     />
+  )
+}
+
+/* ============================================================
+   TARJETA FAMILIA (catálogo agrupado)
+   ============================================================ */
+
+function TarjetaFamilia({
+  familia,
+  tipo,
+  abrir
+}) {
+  const precioDesde = Number(familia.precio_desde ?? familia.precio_hasta ?? 0)
+  const precioHasta = Number(familia.precio_hasta ?? precioDesde ?? 0)
+  const tieneRango =
+    precioDesde > 0 && precioHasta > 0 && precioHasta > precioDesde
+
+  return (
+    <div
+      className="catalogo-producto"
+      onClick={abrir}
+    >
+
+      <div className="catalogo-producto-imagen">
+
+        {familia.imagen_principal ? (
+
+          <img
+            src={familia.imagen_principal}
+            alt={familia.familia}
+          />
+
+        ) : (
+
+          <div className="catalogo-sin-imagen">
+            Sin imagen
+          </div>
+
+        )}
+
+      </div>
+
+      <div className="catalogo-producto-info">
+
+        <span className="familia-variantes">
+          {familia.variantes}{' '}
+          {familia.variantes === 1
+            ? 'variante'
+            : 'variantes'}
+        </span>
+
+        <h3>
+          {familia.familia}
+        </h3>
+
+        <div className="catalogo-producto-precio">
+
+          {tieneRango ? (
+
+            <>
+              <small>
+                Desde
+              </small>
+
+              <strong>
+                $ {formatearPrecio(precioDesde)}
+              </strong>
+
+              <span className="precio-referencia">
+                hasta $ {formatearPrecio(precioHasta)}
+              </span>
+            </>
+
+          ) : precioDesde > 0 ? (
+
+            <>
+              <small>
+                {tipo === 'mayorista'
+                  ? 'Precio mayorista'
+                  : 'Precio'}
+              </small>
+
+              <strong>
+                $ {formatearPrecio(precioDesde)}
+              </strong>
+            </>
+
+          ) : (
+
+            <strong>
+              Consultar precio
+            </strong>
+
+          )}
+
+        </div>
+
+        <span className="ver-mas-hit">
+          Ver variantes →
+        </span>
+
+      </div>
+
+    </div>
   )
 }
 

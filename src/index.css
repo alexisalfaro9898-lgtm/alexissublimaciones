@@ -3300,6 +3300,29 @@ nav {
   font-size: 13px;
 }
 
+.familia-variantes {
+  display: inline-block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #e0e7ff;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.ver-mas-hit {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4f46e5;
+  cursor: pointer;
+}
+
 .catalogo-producto-precio small {
   display: block;
   font-size: 11px;
