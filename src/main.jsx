@@ -16,6 +16,20 @@ import {
   cargarArchivosDePedido,
   obtenerUrlFirmada
 } from './lib/pedidos'
+import {
+  obtenerConversacionCliente,
+  crearConversacion,
+  listarMensajes,
+  enviarMensaje,
+  marcarMensajesLeidos,
+  contarNoLeidosCliente,
+  cargarNotificaciones,
+  contarNoLeidas,
+  marcarNotificacionLeida,
+  marcarTodasLeidas,
+  suscribirMensajes,
+  suscribirNotificaciones
+} from './lib/chat.js'
 
 const nombreProducto = (p) => {
   const nombre =
@@ -50,6 +64,165 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
   const [totalFamilias, setTotalFamilias] = useState(0)
   const [limite, setLimite] = useState(100)
   const [vistaFamilia, setVistaFamilia] = useState(false)
+
+  /* ---------- Chat con el admin ---------- */
+  const [conversacion, setConversacion] = useState(null)
+  const [mensajes, setMensajes] = useState([])
+  const [textoMensaje, setTextoMensaje] = useState('')
+  const [mostrarChat, setMostrarChat] = useState(false)
+  const [cargandoChat, setCargandoChat] = useState(false)
+  const [noLeidosChat, setNoLeidosChat] = useState(0)
+
+  /* ---------- Notificaciones in-app ---------- */
+  const [notificaciones, setNotificaciones] = useState([])
+  const [noLeidas, setNoLeidas] = useState(0)
+  const [mostrarNotif, setMostrarNotif] = useState(false)
+
+  useEffect(() => {
+    let activo = true
+    const clienteId = cliente?.id
+
+    async function inicializarChat() {
+      if (!clienteId) return
+
+      let conv = await obtenerConversacionCliente(clienteId)
+      if (!conv) {
+        const creada = await crearConversacion(clienteId)
+        conv = creada?.data || null
+      }
+
+      if (!activo) return
+      setConversacion(conv)
+
+      if (conv) {
+        const msgs = await listarMensajes(conv.id)
+        if (activo) setMensajes(msgs)
+
+        const n = await contarNoLeidosCliente(conv.id)
+        if (activo) setNoLeidosChat(n)
+
+        // Conectar realtime de mensajes de esta conversación
+        if (activo && !canalMensajes) {
+          canalMensajes = suscribirMensajes(conv.id, (nuevo) => {
+            if (!activo) return
+            setMensajes((prev) => [...prev, nuevo])
+            if (!mostrarChat) {
+              setNoLeidosChat((prev) => prev + 1)
+            }
+            if (nuevo.remitente_tipo === 'admin') {
+              reproducirSonidoNotificacion()
+            }
+          })
+        }
+      }
+    }
+
+    async function inicializarNotif() {
+      const notifs = await cargarNotificaciones({
+        paraTipo: 'cliente',
+        clienteId
+      })
+      const count = await contarNoLeidas({
+        paraTipo: 'cliente',
+        clienteId
+      })
+      if (!activo) return
+      setNotificaciones(notifs)
+      setNoLeidas(count)
+    }
+
+    inicializarChat()
+    inicializarNotif()
+
+    let canalMensajes = null
+    let canalNotif = null
+
+    if (clienteId) {
+      canalNotif = suscribirNotificaciones(
+        { paraTipo: 'cliente', clienteId },
+        (nueva) => {
+          if (!activo) return
+          setNotificaciones((prev) => [
+            nueva,
+            ...prev
+          ])
+          if (!nueva.leida) {
+            setNoLeidas((prev) => prev + 1)
+          }
+        }
+      )
+    }
+
+    return () => {
+      activo = false
+      if (canalMensajes) supabase.removeChannel(canalMensajes)
+      if (canalNotif) supabase.removeChannel(canalNotif)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente?.id])
+
+  async function abrirChat() {
+    setMostrarChat(true)
+    setNoLeidosChat(0)
+    if (!conversacion) {
+      setCargandoChat(true)
+      const clienteId = cliente?.id
+      let conv = await obtenerConversacionCliente(clienteId)
+      if (!conv) {
+        const creada = await crearConversacion(clienteId)
+        conv = creada?.data || null
+      }
+      setConversacion(conv)
+      if (conv) {
+        const msgs = await listarMensajes(conv.id)
+        setMensajes(msgs)
+        marcarMensajesLeidos(conv.id, 'admin')
+        suscribirCanalMensajes(conv.id)
+      }
+      setCargandoChat(false)
+    } else {
+      marcarMensajesLeidos(conversacion.id, 'admin')
+      suscribirCanalMensajes(conversacion.id)
+    }
+  }
+
+  function suscribirCanalMensajes(conversacionId) {
+    suscribirMensajes(conversacionId, (nuevo) => {
+      setMensajes((prev) => [...prev, nuevo])
+      if (!mostrarChat) {
+        setNoLeidosChat((prev) => prev + 1)
+      }
+    })
+  }
+
+  async function enviarMensajeChat() {
+    const texto = textoMensaje.trim()
+    if (!texto || !conversacion) return
+    const { data, error } = await enviarMensaje({
+      conversacionId: conversacion.id,
+      remitenteTipo: 'cliente',
+      texto
+    })
+    if (!error && data) {
+      setMensajes((prev) => [...prev, data])
+    }
+    setTextoMensaje('')
+  }
+
+  function abrirPanelNotif() {
+    setMostrarNotif(true)
+  }
+
+  async function leerTodasNotif() {
+    await marcarTodasLeidas({
+      paraTipo: 'cliente',
+      clienteId: cliente?.id
+    })
+    setNoLeidas(0)
+    setNotificaciones((prev) =>
+      prev.map((n) => ({ ...n, leida: true }))
+    )
+  }
 
   async function cargarCatalogo(
     categoriaId = null,
@@ -323,6 +496,29 @@ useEffect(() => {
               </span>
             </button>
           )}
+
+          <button
+            onClick={abrirChat}
+            className="boton-chat"
+            title="Chatear con el administrador"
+          >
+            💬 Mensajes
+            {noLeidosChat > 0 && (
+              <span className="carrito-badge">{noLeidosChat}</span>
+            )}
+          </button>
+
+          <button
+            onClick={abrirPanelNotif}
+            className="boton-notif"
+            title="Notificaciones"
+            aria-label="Notificaciones"
+          >
+            🔔
+            {noLeidas > 0 && (
+              <span className="carrito-badge">{noLeidas}</span>
+            )}
+          </button>
 
           <button
             onClick={cerrarSesion}
@@ -684,6 +880,143 @@ useEffect(() => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {mostrarChat && (
+        <div
+          className="chat-overlay"
+          onClick={() => setMostrarChat(false)}
+        >
+          <div
+            className="chat-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="chat-header">
+              <div>
+                <h2>💬 Chateá con la administración</h2>
+                <p>Respondemos en el horario de atención.</p>
+              </div>
+              <button
+                className="chat-cerrar"
+                onClick={() => setMostrarChat(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="chat-mensajes">
+              {cargandoChat ? (
+                <p className="chat-vacio">Cargando conversación...</p>
+              ) : mensajes.length === 0 ? (
+                <p className="chat-vacio">
+                  Todavía no hay mensajes. Escribinos y te
+                  respondemos a la brevedad.
+                </p>
+              ) : (
+                mensajes.map((m) => (
+                  <div
+                    key={m.id}
+                    className={
+                      m.remitente_tipo === 'cliente'
+                        ? 'chat-burbuja cliente'
+                        : 'chat-burbuja admin'
+                    }
+                  >
+                    <span>{m.texto}</span>
+                    <small>
+                      {new Date(m.creado_en).toLocaleTimeString(
+                        'es-UY',
+                        { hour: '2-digit', minute: '2-digit' }
+                      )}
+                    </small>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="chat-input">
+              <input
+                type="text"
+                placeholder="Escribí tu mensaje..."
+                value={textoMensaje}
+                onChange={(e) => setTextoMensaje(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') enviarMensajeChat()
+                }}
+              />
+              <button
+                onClick={enviarMensajeChat}
+                disabled={!textoMensaje.trim()}
+              >
+                Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mostrarNotif && (
+        <div
+          className="notif-overlay"
+          onClick={() => setMostrarNotif(false)}
+        >
+          <div
+            className="notif-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="notif-header">
+              <h2>🔔 Notificaciones</h2>
+              {noLeidas > 0 && (
+                <button
+                  className="notif-leer-todas"
+                  onClick={leerTodasNotif}
+                >
+                  Marcar todas leídas
+                </button>
+              )}
+              <button
+                className="notif-cerrar"
+                onClick={() => setMostrarNotif(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="notif-lista">
+              {notificaciones.length === 0 ? (
+                <p className="notif-vacio">
+                  No tenés notificaciones por ahora.
+                </p>
+              ) : (
+                notificaciones.map((n) => (
+                  <div
+                    key={n.id}
+                    className={
+                      'notif-item' + (n.leida ? '' : ' no-leida')
+                    }
+                    onClick={() =>
+                      marcarNotificacionLeida(n.id).then(() =>
+                        setNotificaciones((prev) =>
+                          prev.map((x) =>
+                            x.id === n.id
+                              ? { ...x, leida: true }
+                              : x
+                          )
+                        )
+                      )
+                    }
+                  >
+                    <strong>{n.titulo}</strong>
+                    <p>{n.cuerpo}</p>
+                    <small>
+                      {new Date(n.creado_en).toLocaleString('es-UY')}
+                    </small>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

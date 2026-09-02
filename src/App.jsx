@@ -32,7 +32,9 @@ import {
   GitCompareArrows,
   BarChart3,
   Sparkles,
-  ImageOff
+  ImageOff,
+  MessageSquare,
+  Bell
 } from 'lucide-react'
 
 import { supabase } from './lib/supabase'
@@ -40,6 +42,7 @@ import DashboardAdmin from './components/DashboardAdmin'
 import ProveedoresPage from './components/ProveedoresPage'
 import ComparacionProveedoresPage from './components/ComparacionProveedoresPage'
 import ComprasPage from './components/ComprasPage'
+import ChatAdmin from './components/ChatAdmin'
 import {
   proponerNormalizaciones,
   decodificarNombre
@@ -283,6 +286,11 @@ async function cargarCategorias() {
     },
 
     {
+      nombre: 'Mensajes',
+      icono: MessageSquare
+    },
+
+    {
       nombre: 'Pedidos',
       icono: ShoppingBag
     },
@@ -499,6 +507,9 @@ async function cargarCategorias() {
           />
 
         )}
+
+
+        {pagina === 'Mensajes' && <ChatAdmin />}
 
 
         {pagina === 'Dashboard' &&
