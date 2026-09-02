@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.jsx'
 import Auth from './Auth.jsx'
 import { supabase } from './lib/supabase'
+import FichaProducto from './FichaProducto'
 import {
   RECARGO_NOMBRE_TEXTO,
   RECARGO_BOLSITA,
@@ -24,6 +25,8 @@ const nombreProducto = (p) => p?.nombre_comercial || p?.nombre
 
 function PortalCliente({ cliente, cerrarSesion, tipo }) {
   const [vista, setVista] = useState('catalogo')
+  const [carrito, setCarrito] = useState([])
+  const [mostrarCarrito, setMostrarCarrito] = useState(false)
   const [familias, setFamilias] = useState([])
   const [categorias, setCategorias] = useState([])
   const [busqueda, setBusqueda] = useState('')
@@ -142,10 +145,65 @@ function PortalCliente({ cliente, cerrarSesion, tipo }) {
     setCargandoVariaciones(false)
   }
 
+  function agregarAlCarrito(item) {
+    if (!item) return
+    setCarrito((actuales) => [...actuales, item])
+    setMostrarCarrito(true)
+  }
+
+  function quitarDelCarrito(indice) {
+    setCarrito((actuales) =>
+      actuales.filter((_, i) => i !== indice)
+    )
+  }
+
+  function cambiarCantidadCarrito(indice, cantidad) {
+    setCarrito((actuales) =>
+      actuales.map((item, i) =>
+        i === indice
+          ? { ...item, cantidad: Math.max(1, Number(cantidad) || 1) }
+          : item
+      )
+    )
+  }
+
+  async function confirmarCarrito() {
+    if (carrito.length === 0) return
+
+    try {
+      const pedido = await crearPedido({
+        cliente: {
+          nombre: cliente?.nombre,
+          telefono: cliente?.telefono,
+          email: cliente?.email,
+          clienteId: cliente?.id
+        },
+        items: carrito,
+        tipo,
+        origen: 'web'
+      })
+
+      setCarrito([])
+      setMostrarCarrito(false)
+      setProductoSeleccionado(null)
+      setVista('misPedidos')
+      setPedidoSeleccionado(pedido)
+
+    } catch (errorPedido) {
+      console.error('Error creando pedido:', errorPedido)
+      alert(errorPedido?.message || 'No se pudo enviar el pedido. Intentalo nuevamente.')
+    }
+  }
+
+  function irAlCarrito() {
+    setMostrarCarrito(true)
+  }
+
   function volverAFamilias() {
     setVistaFamilia(false)
     setFamiliaSeleccionada(null)
     setVariaciones([])
+    setProductoSeleccionado(null)
   }
 useEffect(() => {
     cargarCatalogo()
@@ -186,6 +244,18 @@ useEffect(() => {
               : 'Cliente minorista'}
           </span>
 
+          {carrito.length > 0 && (
+            <button
+              onClick={irAlCarrito}
+              className="boton-carrito"
+            >
+              🛒 Carrito
+              <span className="carrito-badge">
+                {carrito.length}
+              </span>
+            </button>
+          )}
+
           <button
             onClick={cerrarSesion}
             className="boton-salir"
@@ -196,7 +266,6 @@ useEffect(() => {
         </div>
 
       </header>
-
       <nav className="portal-nav">
         <button
           className={
@@ -274,28 +343,24 @@ useEffect(() => {
 
                   {cargandoVariaciones ? (
                     <div className="catalogo-cargando">
-                      Cargando variantes...
+                      Cargando producto...
                     </div>
                   ) : (
-                    <div className="catalogo-grid">
-                      {variaciones.map((producto) => (
-                        <TarjetaProducto
-                          key={producto.id}
-                          producto={producto}
-                          tipo={tipo}
-                          abrir={() =>
-                            setProductoSeleccionado(producto)
-                          }
-                        />
-                      ))}
-                    </div>
+                    <FichaProducto
+                      familia={familiaSeleccionada}
+                      variaciones={variaciones}
+                      categorias={categorias}
+                      tipo={tipo}
+                      onAgregar={agregarAlCarrito}
+                      volver={volverAFamilias}
+                    />
                   )}
 
                   {!cargandoVariaciones &&
                     variaciones.length === 0 && (
                       <div className="catalogo-vacio">
                         <h3>
-                          No encontramos variantes
+                          No encontramos este producto
                         </h3>
                         <p>
                           Probá con otra familia o búsqueda.
@@ -435,6 +500,115 @@ useEffect(() => {
           )}
 
       </main>
+
+      {mostrarCarrito && (
+        <div
+          className="carrito-overlay"
+          onClick={() => setMostrarCarrito(false)}
+        >
+          <div
+            className="carrito-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="carrito-header">
+              <h2>Tu carrito</h2>
+              <button
+                className="carrito-cerrar"
+                onClick={() => setMostrarCarrito(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            {carrito.length === 0 ? (
+              <p className="carrito-vacio">
+                Todavía no agregaste productos.
+              </p>
+            ) : (
+              <>
+                <div className="carrito-lista">
+                  {carrito.map((item, indice) => {
+                    const nombre =
+                      item.producto?.nombre || 'Producto'
+                    const precioItem =
+                      item.producto?.precio_mayorista ||
+                      item.producto?.precio_publico ||
+                      item.producto?.precio
+                    return (
+                      <div
+                        className="carrito-item"
+                        key={`${item.producto?.id}-${indice}`}
+                      >
+                        {item.producto?.imagen_principal ? (
+                          <img
+                            src={item.producto.imagen_principal}
+                            alt={nombre}
+                            className="carrito-item-img"
+                          />
+                        ) : (
+                          <div className="carrito-item-sinimg" />
+                        )}
+                        <div className="carrito-item-info">
+                          <strong>{nombre}</strong>
+                          <span className="carrito-item-sku">
+                            {item.producto?.codigo_interno
+                              ? `SKU: ${item.producto.codigo_interno}`
+                              : ''}
+                          </span>
+                          <div className="carrito-item-cant">
+                            <button
+                              onClick={() =>
+                                cambiarCantidadCarrito(
+                                  indice,
+                                  (Number(item.cantidad) || 1) - 1
+                                )
+                              }
+                            >
+                              −
+                            </button>
+                            <span>{item.cantidad || 1}</span>
+                            <button
+                              onClick={() =>
+                                cambiarCantidadCarrito(
+                                  indice,
+                                  (Number(item.cantidad) || 1) + 1
+                                )
+                              }
+                            >
+                              +
+                            </button>
+                          </div>
+                          <strong className="carrito-item-precio">
+                            $ {formatearPrecio(
+                              (Number(precioItem) || 0) *
+                                (Number(item.cantidad) || 1)
+                            )}
+                          </strong>
+                        </div>
+                        <button
+                          className="carrito-item-quitar"
+                          onClick={() => quitarDelCarrito(indice)}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="carrito-footer">
+                  <button
+                    className="boton-pedir"
+                    onClick={confirmarCarrito}
+                  >
+                    Confirmar pedido
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   )

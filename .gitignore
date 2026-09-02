@@ -38,3 +38,6 @@ src/*.antes*
 *.njsproj
 *.sln
 *.sw?
+
+# Descargas de imágenes de trabajo (no versionar)
+mockups_originales/
